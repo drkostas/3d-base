@@ -58,8 +58,20 @@ def surface_points(mesh, n=4000, seed=SAMPLE_SEED):
     rng = np.random.default_rng(seed)
     try:
         return mesh.sample(n, seed=rng)
-    except TypeError:  # older trimesh has no seed argument
-        return mesh.sample(n)
+    except TypeError:
+        # Older trimesh has no seed argument. Sampling without one would break the promise above,
+        # so sample here: pick faces by area, then a uniform point inside each.
+        return _seeded_sample(mesh, n, rng)
+
+
+def _seeded_sample(mesh, n, rng):
+    cum = np.cumsum(np.asarray(mesh.area_faces, float))
+    face = np.searchsorted(cum, rng.random(n) * cum[-1])
+    tri = np.asarray(mesh.triangles, float)[face]
+    r = rng.random((n, 2))
+    over = r.sum(axis=1) > 1
+    r[over] = 1 - r[over]                       # fold the square onto the triangle
+    return tri[:, 0] + r[:, :1] * (tri[:, 1] - tri[:, 0]) + r[:, 1:] * (tri[:, 2] - tri[:, 0])
 
 
 def report(path) -> dict:

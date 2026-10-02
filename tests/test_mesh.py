@@ -39,6 +39,20 @@ def test_surface_points_are_the_same_every_run():
     assert not np.array_equal(np.asarray(a), np.asarray(M.surface_points(s, 200, seed=12)))
 
 
+def test_old_trimesh_without_a_seed_still_gives_the_same_points(monkeypatch):
+    s = trimesh.creation.icosphere()
+
+    def old_sample(self, count, **kw):
+        if kw:
+            raise TypeError("sample() got an unexpected keyword argument 'seed'")
+        return np.random.random((count, 3))             # what an unseeded call would return
+    monkeypatch.setattr(trimesh.Trimesh, "sample", old_sample)
+    a, b = M.surface_points(s, 300), M.surface_points(s, 300)
+    assert np.array_equal(a, b)
+    assert np.allclose(np.linalg.norm(a, axis=1), 1.0, atol=0.02)  # on the sphere's surface
+    assert not np.array_equal(a, M.surface_points(s, 300, seed=12))
+
+
 def test_cli_render_and_sheet(tmp_path, capsys):
     p = tmp_path / "b.stl"
     trimesh.creation.box().export(p)
