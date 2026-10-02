@@ -61,3 +61,9 @@ def test_cli_render_and_sheet(tmp_path, capsys):
     assert out.read_bytes()[:4] == b"\x89PNG"
     assert main(["render", str(p), "-o", str(tmp_path / "s.png"), "--view", "sheet", "--size", "120x80"]) == 0
     assert main(["check", str(p)]) == 0
+
+
+def test_skill_installs(tmp_path, capsys):
+    assert main(["skill", "--dir", str(tmp_path)]) == 0
+    text = (tmp_path / "3d-base" / "SKILL.md").read_text()
+    assert text.startswith("---\nname: 3d-base\n")

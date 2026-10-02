@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- A Claude Code skill for judging models from pictures, installed with `3d-base skill`
+
 ## 0.1.0
 
 First release.
