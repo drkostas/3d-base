@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+from pathlib import Path
 
 from . import __version__
 from .mesh import load_clean, report
@@ -23,10 +25,19 @@ def main(argv=None) -> int:
     r.add_argument("--elev", type=float)
     r.add_argument("--size", default="1400x1000")
 
+    k = sub.add_parser("skill", help="install the Claude Code skill for judging models from pictures")
+    k.add_argument("--dir", default="~/.claude/skills")
+
     c = sub.add_parser("check", help="faces, bodies, closed cavities and volume, after dropping slivers")
     c.add_argument("mesh")
 
     a = p.parse_args(argv)
+    if a.cmd == "skill":
+        dest = Path(a.dir).expanduser() / "3d-base"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(Path(__file__).parent / "skill" / "SKILL.md", dest / "SKILL.md")
+        print(f"installed {dest / 'SKILL.md'}")
+        return 0
     if a.cmd == "check":
         rep = report(a.mesh)
         print(json.dumps(rep, indent=1))

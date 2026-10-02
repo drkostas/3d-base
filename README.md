@@ -67,6 +67,14 @@ assert not voids(bodies)
 
 `surface_points(mesh, n)` samples points on the surface with a fixed seed, so a step that places things from those points gives the same answer on every run.
 
+## Claude Code skill
+
+```bash
+3d-base skill             # copies it to ~/.claude/skills/3d-base
+```
+
+I wrote this package so an assistant could judge models from pictures, and the skill is the part that matters most. It covers which views to render, how to read them, what a picture is reliable about (shape, a missing piece) and what it is not (contact, small bulges, surface quality), and the measurement to make instead. It also covers the mistakes that cost us hours, such as measuring a downloaded part that was upside down.
+
 ## Speed
 
 It is plain numpy with a loop over triangles. A part with 225,721 faces renders at 700 by 500 in 6 to 9 seconds on an M1 Max, and a part with 40,960 faces in about 1.5 seconds. For an interactive viewer use something else. For pictures in a script, a test or a report it is fast enough.
