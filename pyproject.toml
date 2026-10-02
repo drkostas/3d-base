@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "3d-base"
+version = "0.1.0"
+description = "Headless pictures of 3D meshes with correct occlusion and smooth shading, and a health check for exported STL files"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Konstantinos Georgiou" }]
+dependencies = ["numpy>=1.22", "trimesh>=3.20", "scipy>=1.8"]
+keywords = ["3d", "mesh", "stl", "render", "headless", "trimesh", "3d-printing", "cad"]
+classifiers = ["Programming Language :: Python :: 3", "Topic :: Multimedia :: Graphics :: 3D Rendering"]
+
+[project.urls]
+Homepage = "https://github.com/drkostas/3d-base"
+
+[project.scripts]
+3d-base = "base3d.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
