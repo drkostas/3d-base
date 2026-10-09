@@ -1,8 +1,8 @@
+![3d-base](docs/images/banner.png)
+
 # 3d-base
 
 3d-base draws pictures of 3D meshes from Python with no display, no OpenGL and no browser. It needs numpy, trimesh and scipy. I use it to check models for 3D printing from a script, and to give an AI assistant pictures it can judge a design from.
-
-![Three views of a box, a ball and a rod that pass through each other](docs/example.png)
 
 It also loads exported STL files and reports what is really wrong with them, after removing the zero-area triangles that CAD exporters write.
 
