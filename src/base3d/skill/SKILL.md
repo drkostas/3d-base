@@ -239,6 +239,32 @@ object with and without the feature and subtract, which reads 0.00 where there i
 a new check against both candidate baselines and confirm which one makes it mean what its sentence
 says.
 
+## Walls that print
+
+A wall that is too thin prints as one weak line or not at all, and no bounding box, volume or
+watertight check says so. Measure it, and measure it the way the part will lie on the plate.
+
+```python
+from base3d import thickness as T
+spots = T.thin_spots(mesh, bar_mm=0.8)                    # the places under 0.8 mm, grouped
+spots = T.print_thin_spots(placed, backed_mm=1.0)         # as it lies, +z up, ridges left out
+for s in spots:
+    print(s["short_of"], s["typical_width_mm"], s["size_mm"], s["points"])
+```
+
+- Read `typical_mm` and `size_mm` before `mm`. Material really is thin next to a sharp edge, so a
+  place of a few points with a low `mm` is an edge, which printing rounds off. A wall that will fail
+  is large and thin throughout.
+- Judge the part as it lies. An upright wall needs two lines across a layer (0.8 mm at a 0.4 mm
+  nozzle) and a flat plate needs two layers (0.4 mm at 0.2 mm layers). A 0.45 mm brim fails stood on
+  its edge and passes lying flat, so `thin_spots` on the part as modelled cannot tell you.
+- Ridges, teeth and grooves on a thick wall read as thin, because the ray crosses one ridge and
+  leaves it. They print as bumps in the outer line. `backed_mm` leaves out a point whose ray meets the
+  part again soon after leaving it. A free shell, fin or plate has open space behind it and stays in.
+- Before thickening anything, find out which side can grow. A shell that sits on another part (a cap
+  on a head) can only grow outward where there is no gap under it, and growing outward changes the
+  look. Measure the gap first.
+
 ## Checking an exported STL
 
 OpenCascade (and tools on it such as build123d and CadQuery) writes zero-area triangles at sphere
@@ -273,6 +299,28 @@ assert not voids(bodies)            # negative volume means a sealed cavity
   surface to fit measured 4.19 mm thick.
 - Use `surface_points(mesh, n)` when points decide anything (where a support or contact goes). It
   is seeded, so the same input gives the same design on every run.
+- One closed body in memory is not one closed body in the file. A boolean can keep two vertices a
+  hundred millionth of a millimetre apart, separate only by their index. An STL has 32-bit
+  coordinates and no indices, and a reader joins vertices by position. Check what the slicer will
+  read with `as_written(mesh)`. Its `holes` (edges with an odd number of faces) and a second body are
+  defects, and `touches` (edges with four faces, two sheets touching) still slice as they are. A part
+  that was one body in memory read back as 8 bodies with 41 holed edges.
+
+## Booleans that leave touching surfaces
+
+`trimesh.boolean` with the manifold engine casts every mesh to 32-bit floats on the way in and on
+the way out, so two vertices that are distinct inside the engine can come out at the same position.
+They become the touching edges and holes that `as_written` finds. Three ways this happened, and what
+fixed each.
+
+- Two icospheres about the same centre share their directions, because subdividing keeps every
+  vertex, so their edges cross exactly. Turn one of them by a few degrees.
+- A solid built to follow a surface at a small fixed offset (a fill reaching 0.2 mm past the inside of
+  a shell) crosses that surface at a grazing angle wherever the sampling falls between its points.
+  Keep its points inside the material, check them with `contains` in batches, and expect a few
+  touching edges, not zero.
+- A fill sampled by rays from a centre also reaches surfaces it was not meant for (the underside of
+  a brim far out from the centre). Limit how far it may reach.
 
 ## Showing pictures to a person for a decision
 
