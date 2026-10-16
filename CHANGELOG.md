@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `mesh.solid_from_skin(mesh, centre, reach)` makes a hollow part solid by removing its inner surface and closing the skin, so a cavity cut afterwards is the only inside it has. Filling a hollow part by uniting a fill with it leaves air against the inner surface, which a slicer prints as tunnels.
+- `show.sections` needs shapely and whichever triangulator trimesh finds, not mapbox-earcut by name.
 - The skill has a section of trimesh calls that cost a build each to learn: the cut and section functions, batching `contains` and ray queries, `split` on an open mesh, booleans in 32 bits, icospheres sharing directions, revolve profiles, and `centroid`.
 - `show.sections(mesh)` cuts the part in half three ways, across its own principal directions, and shows each half coloured by its wall thickness with the cut face in blue, for looking at a part before changing it. `3d-base sections part.stl -o cuts.png` writes the same. Needs shapely and mapbox-earcut, installed with `3d-base[sections]`.
 - `mesh.sound(mesh)` is one call for whether a part is sound to print, with every reason it is not in plain words: not closed, more than one piece, a sealed void, a file that reads back with a hole or a loose piece, a wall too thin over a real distance. `3d-base sound part.stl` does the same and exits 1 on any fault.

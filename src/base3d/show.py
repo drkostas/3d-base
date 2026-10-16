@@ -376,10 +376,9 @@ def sections(mesh, axes=None, bar_mm=0.8, one_line_mm=0.45, n=6000, size=(420, 4
     straight at each cut face. Needs shapely and mapbox-earcut (`pip install '3d-base[sections]'`).
     """
     try:
-        import shapely  # noqa: F401  (trimesh caps a cut with it)
-        import mapbox_earcut  # noqa: F401
+        import shapely  # noqa: F401  (trimesh caps a cut with it, and triangulates with earcut or triangle)
     except ImportError as e:
-        raise ImportError("sections needs shapely and mapbox-earcut: pip install '3d-base[sections]'") from e
+        raise ImportError("sections needs shapely and a triangulator: pip install '3d-base[sections]'") from e
     from scipy.spatial import cKDTree
     from .mesh import surface_points
     from .thickness import face_thickness, wall_thickness

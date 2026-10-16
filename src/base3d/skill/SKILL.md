@@ -327,6 +327,10 @@ fixed each.
   touching edges, not zero.
 - A fill sampled by rays from a centre also reaches surfaces it was not meant for (the underside of
   a brim far out from the centre). Limit how far it may reach.
+- Better than any fill: a hollow part that is to sit on another does not need a fill at all.
+  `mesh.solid_from_skin(mesh, centre, reach)` removes the inner surface and closes the skin, so the
+  cavity cut for the part it sits on is the only inside it has, and there is no surface for air to
+  lie against. Three fills on one cap each left tunnels; the skin made solid left none.
 
 ## trimesh calls that cost a build each to learn
 
