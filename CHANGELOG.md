@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `show.caption(text, width)` draws a caption into an image to stack with pictures. It wraps words into lines at one type size rather than shrinking the type, and only a word wider than the band shrinks it. Needs Pillow, installed with `3d-base[captions]`.
 - `as_written` counts as loose only the pieces outside the largest one. A closed shell inside the part overlaps it, and a slicer prints overlapping shells as one solid.
 - `as_written` reports `loose_mm3`, the volume of every piece but the largest, and is `ok` when there is no hole and nothing loose beyond it (0.5 mm3 by default). A boolean's slivers at a touching edge pass, a real second piece does not.
 - `print_thin_spots` reads a place's `typical_width_mm` from the points short of the bar it names. A group split evenly between an upright wall and a nearly flat plate averaged the two and reported a width of thousands of millimetres.

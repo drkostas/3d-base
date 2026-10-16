@@ -325,6 +325,11 @@ fixed each.
 
 ## Showing pictures to a person for a decision
 
+Put the numbers in the picture itself with `show.caption(text, width)`, which wraps a long caption
+into lines at one type size and stacks over or under the pictures (`np.vstack`). A caption that
+shrinks to fit reads at a different size on every row, and one that is cut off is a number nobody
+sees.
+
 - Never ask about a shape in prose. Render each candidate and show the pictures. A question with
   options written in words asks the person to imagine two shapes and compare them from memory.
 - Build every option the same way, so the only difference is the thing in question. A first

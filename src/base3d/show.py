@@ -292,3 +292,71 @@ def save_png(img, path):
 
 # The name used before this was a package.
 _corner_normals = corner_normals
+
+
+def caption(text, width, size=28, floor=12, pad=14, gap=6, bg=(20, 20, 20), fg=(226, 232, 238),
+            font=None):
+    """A caption drawn into an image `width` wide, as an RGB array to stack with pictures.
+
+    The words are wrapped into lines that fit the width at `size`, so a long caption makes the band
+    taller instead of the type smaller, and every caption on a sheet reads at one size. Only a
+    single word wider than the band shrinks the type, down to `floor`, and a word that does not fit
+    even then raises, because a caption that is written and not visible is the same fault as a
+    number printed to a log. `font` is a path to a TrueType file; without one, Pillow's own face is
+    used. Needs Pillow (`pip install '3d-base[captions]'`).
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as e:
+        raise ImportError("caption needs Pillow: pip install '3d-base[captions]'") from e
+    words = text.split()
+    if not words:
+        raise ValueError("an empty caption")
+
+    def face(pt):
+        if font:
+            try:
+                return ImageFont.truetype(font, pt)
+            except OSError:
+                pass
+        try:
+            return ImageFont.load_default(size=pt)
+        except TypeError:                       # an older Pillow, one size only
+            return ImageFont.load_default()
+
+    probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    room = width - 2 * pad
+    pt = size
+    while True:
+        f = face(pt)
+        widest = max(probe.textlength(w, font=f) for w in words)
+        if widest <= room or pt <= floor:
+            break
+        pt -= 1
+    if widest > room:
+        raise ValueError(f"a word of {text!r} does not fit {width} px even at {floor} pt")
+    lines, line = [], ""
+    for w in words:
+        trial = (line + " " + w).strip()
+        if probe.textlength(trial, font=f) <= room:
+            line = trial
+        else:
+            lines.append(line)
+            line = w
+    lines.append(line)
+    try:
+        ascent, descent = f.getmetrics()
+    except Exception:
+        ascent, descent = pt, pt // 4
+    line_h = ascent + descent + gap
+    height = pad + len(lines) * line_h - gap
+    im = Image.new("RGB", (width, height), tuple(bg))
+    draw = ImageDraw.Draw(im)
+    y = pad // 2
+    for ln in lines:
+        draw.text((pad, y), ln, font=f, fill=tuple(fg))
+        y += line_h
+    out = np.asarray(im)
+    if int(out.max()) <= max(bg) + 10:
+        raise ValueError(f"the caption drew no pixels: {text!r}")
+    return out
