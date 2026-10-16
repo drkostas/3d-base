@@ -174,7 +174,10 @@ def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: 
 
     def extra(idx):
         lines = int(short_lines[idx].sum()) >= int(short_layers[idx].sum())
-        have = across[idx] if lines else through[idx]
+        # the width of the points short of the chosen bar only: a group split evenly between an
+        # upright wall and a plate a hair off flat averaged 0.5 mm with the plate's reach across
+        # a layer and reported 18812 mm
+        have = across[idx][short_lines[idx]] if lines else through[idx][short_layers[idx]]
         return {"short_of": "lines" if lines else "layers",
                 "typical_width_mm": float(np.median(have[np.isfinite(have)])) if np.isfinite(have).any()
                 else float("inf")}
