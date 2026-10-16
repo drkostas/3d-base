@@ -87,6 +87,64 @@ def report(path) -> dict:
     }
 
 
+def _pieces(mesh, inverse=None, count=None):
+    """The pieces of `mesh` joined face to face (across edges shared by exactly two faces), largest
+    first. Counted here rather than by `split`, which fills holes first and needs networkx."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    if inverse is None:
+        edges = np.sort(np.asarray(mesh.edges), axis=1)
+        _u, inverse, count = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+        inverse = np.asarray(inverse).ravel()
+    face = np.asarray(mesh.edges_face)
+    order = np.argsort(inverse, kind="stable")
+    inv, fac = inverse[order], face[order]
+    same = (inv[1:] == inv[:-1]) & (count[inv[1:]] == 2)
+    n = len(mesh.faces)
+    adj = coo_matrix((np.ones(int(same.sum())), (fac[:-1][same], fac[1:][same])), shape=(n, n))
+    k, label = connected_components(adj, directed=False)
+    pieces = [trimesh.Trimesh(mesh.vertices, mesh.faces[label == i], process=False) for i in range(k)]
+    pieces.sort(key=lambda q: -abs(float(q.volume)))
+    return pieces
+
+
+def sound(mesh: trimesh.Trimesh, bar_mm: float = 0.8, n: int = 4000, size_mm: float = 3.0,
+          loose_mm3: float = 0.5) -> dict:
+    """One call for whether a part is sound to print, and every reason it is not.
+
+    `faults` lists, in plain words, each of: not closed; more than one piece of real volume; a
+    sealed void (a closed piece of negative volume inside); the file reading back with a hole or a
+    loose piece (`as_written`); and a wall thinner than `bar_mm` over more than `size_mm`, by its
+    middle reading (`thickness.thin_spots`). An empty list is sound. The other keys carry the
+    readings behind them, so a geometry function can end with `assert not sound(m)["faults"]`.
+    """
+    from .thickness import thin_spots
+    faults = []
+    pieces = _pieces(mesh)
+    vols = [float(q.volume) for q in pieces]
+    bodies = sum(1 for v in vols if v > loose_mm3)
+    voids = sum(1 for v in vols if v < -loose_mm3)
+    closed = bool(mesh.is_watertight)
+    if not closed:
+        faults.append("not closed")
+    if bodies > 1:
+        faults.append(f"{bodies} pieces of real volume")
+    if voids:
+        faults.append(f"{voids} sealed void(s)")
+    written = as_written(mesh, loose_mm3=loose_mm3)
+    if not written["ok"]:
+        faults.append(f"reads back from a file with {written['holes']} holed edge(s) and "
+                      f"{written['loose_mm3']:.2f} mm3 loose")
+    thin = [t for t in thin_spots(mesh, bar_mm, n=n) if t["size_mm"] >= size_mm]
+    thinnest = min((t["typical_mm"] for t in thin), default=None)
+    if thin:
+        worst = min(thin, key=lambda t: t["typical_mm"])
+        faults.append(f"a wall {worst['typical_mm']:.2f} mm thick over {worst['size_mm']:.1f} mm "
+                      f"(needs {bar_mm})")
+    return {"faults": faults, "closed": closed, "bodies": bodies, "voids": voids,
+            "as_written": written, "thinnest_wall_mm": thinnest}
+
+
 def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float = 0.5) -> dict:
     """The mesh as a slicer will read it: written to `file_type`, read back, and counted.
 
@@ -112,19 +170,8 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
     inverse = np.asarray(inverse).ravel()
     holes = int((count % 2 == 1).sum())
     touches = int(((count > 2) & (count % 2 == 0)).sum())
-    # pieces joined face to face: faces adjacent across an edge shared by exactly two, counted
-    # here rather than by `split`, which fills holes first and needs networkx for that
-    from scipy.sparse import coo_matrix
-    from scipy.sparse.csgraph import connected_components
-    face = np.asarray(back.edges_face)
-    order = np.argsort(inverse, kind="stable")
-    inv, fac = inverse[order], face[order]
-    same = (inv[1:] == inv[:-1]) & (count[inv[1:]] == 2)
-    n = len(back.faces)
-    adj = coo_matrix((np.ones(int(same.sum())), (fac[:-1][same], fac[1:][same])), shape=(n, n))
-    bodies, label = connected_components(adj, directed=False)
-    pieces = [trimesh.Trimesh(back.vertices, back.faces[label == k], process=False) for k in range(bodies)]
-    pieces.sort(key=lambda q: -abs(float(q.volume)))
+    pieces = _pieces(back, inverse, count)
+    bodies = len(pieces)
     loose = 0.0
     for q in pieces[1:]:
         # a closed piece whose centre lies inside the largest piece overlaps it, and a slicer

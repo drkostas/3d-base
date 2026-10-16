@@ -111,3 +111,26 @@ def test_a_shell_inside_the_part_is_not_loose():
     inner = trimesh.creation.box(bounds=[[4, 4, 4], [6, 6, 6]])
     got = as_written(trimesh.util.concatenate([outer, inner]))
     assert got["bodies"] == 2 and got["holes"] == 0 and got["loose_mm3"] == 0.0 and got["ok"]
+
+
+def test_a_sound_part_has_no_faults_and_a_bad_one_names_each():
+    from base3d.mesh import sound
+    assert sound(trimesh.creation.box(extents=(10, 10, 10)))["faults"] == []
+    hollow = trimesh.creation.box(extents=(10, 10, 10))
+    pocket = trimesh.creation.box(extents=(4, 4, 4))
+    pocket.invert()                                    # a sealed void inside
+    plate = trimesh.creation.box(extents=(10, 10, 0.5))
+    plate.apply_translation((0, 0, 8))                 # a thin second piece outside
+    got = sound(trimesh.util.concatenate([hollow, pocket, plate]))
+    text = " ".join(got["faults"])
+    assert "sealed void" in text and "pieces of real volume" in text and "a wall 0.5" in text
+    assert got["voids"] == 1 and got["bodies"] == 2
+
+
+def test_the_command_line_says_whether_a_part_is_sound(tmp_path, capsys):
+    import json
+    from base3d.cli import main
+    p = tmp_path / "box.stl"
+    trimesh.creation.box(extents=(10, 10, 10)).export(p)
+    assert main(["sound", str(p)]) == 0
+    assert json.loads(capsys.readouterr().out)["faults"] == []
