@@ -87,29 +87,43 @@ def report(path) -> dict:
     }
 
 
-def as_written(mesh: trimesh.Trimesh, file_type: str = "stl") -> dict:
+def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float = 0.5) -> dict:
     """The mesh as a slicer will read it: written to `file_type`, read back, and counted.
 
     A boolean engine can leave two vertices a hundred millionth of a millimetre apart, kept separate
     only by their index, so a mesh can be one closed body in memory. An STL stores 32-bit coordinates
     and has no indices, and a reader joins vertices by position, so those pairs weld together. Read
-    back, the mesh can have holes, extra bodies, or edges shared by four faces.
+    back, the mesh can have holes, extra pieces, or edges shared by four faces.
 
-    Returns `bodies`, `holes` (edges with an odd number of faces, where a slicer has to guess),
-    `touches` (edges with four or more, where two closed sheets touch, which still slice as they are)
-    and `ok`, which is one body and no hole.
+    Returns `bodies` (the pieces joined face to face; two closed sheets that only touch along an
+    edge are two pieces), `holes` (edges with an odd number of faces, where a slicer has to guess),
+    `touches` (edges with four faces, two closed sheets touching, which still slice as they are),
+    `loose_mm3` (the volume of every piece but the largest) and `ok`, which is no hole and nothing
+    loose beyond `loose_mm3`: a boolean's slivers at a touch pass, a real second piece does not.
     """
     import io
-    from collections import Counter
     buf = io.BytesIO()
     mesh.export(buf, file_type=file_type)
     buf.seek(0)
     back = trimesh.load(buf, file_type=file_type, force="mesh")
-    edges = Counter(map(tuple, np.sort(np.asarray(back.edges), axis=1)))
-    holes = sum(1 for v in edges.values() if v % 2)
-    touches = sum(1 for v in edges.values() if v > 2 and v % 2 == 0)
-    # counted from face adjacency: `split` on a mesh with holes tries to fill them, which needs
-    # networkx, and this package does not depend on it
-    bodies = len(trimesh.graph.connected_components(back.face_adjacency, nodes=np.arange(len(back.faces)),
-                                                    min_len=1))
-    return {"ok": holes == 0 and bodies == 1, "bodies": bodies, "holes": holes, "touches": touches}
+    edges = np.sort(np.asarray(back.edges), axis=1)
+    _uniq, inverse, count = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+    inverse = np.asarray(inverse).ravel()
+    holes = int((count % 2 == 1).sum())
+    touches = int(((count > 2) & (count % 2 == 0)).sum())
+    # pieces joined face to face: faces adjacent across an edge shared by exactly two, counted
+    # here rather than by `split`, which fills holes first and needs networkx for that
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    face = np.asarray(back.edges_face)
+    order = np.argsort(inverse, kind="stable")
+    inv, fac = inverse[order], face[order]
+    same = (inv[1:] == inv[:-1]) & (count[inv[1:]] == 2)
+    n = len(back.faces)
+    adj = coo_matrix((np.ones(int(same.sum())), (fac[:-1][same], fac[1:][same])), shape=(n, n))
+    bodies, label = connected_components(adj, directed=False)
+    vols = sorted((abs(float(trimesh.Trimesh(back.vertices, back.faces[label == k], process=False).volume))
+                   for k in range(bodies)), reverse=True)
+    loose = float(sum(vols[1:]))
+    return {"ok": holes == 0 and loose <= loose_mm3, "bodies": int(bodies), "holes": holes,
+            "touches": touches, "loose_mm3": loose}

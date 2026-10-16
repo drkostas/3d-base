@@ -71,7 +71,7 @@ def test_skill_installs(tmp_path, capsys):
 
 def test_a_closed_box_reads_back_as_one_body():
     from base3d.mesh import as_written
-    assert as_written(trimesh.creation.box()) == {"ok": True, "bodies": 1, "holes": 0, "touches": 0}
+    assert as_written(trimesh.creation.box()) == {"ok": True, "bodies": 1, "holes": 0, "touches": 0, "loose_mm3": 0.0}
 
 
 def test_a_missing_face_reads_back_as_a_hole():
@@ -91,4 +91,14 @@ def test_two_blocks_kept_apart_by_index_weld_where_they_touch():
     both = trimesh.util.concatenate([a, b])
     assert both.is_watertight
     got = as_written(both)
-    assert got["touches"] == 1 and got["holes"] == 0 and not got["ok"]
+    assert got["touches"] == 1 and got["holes"] == 0 and got["bodies"] == 2
+    assert abs(got["loose_mm3"] - 8.0) < 1e-6 and not got["ok"]
+
+
+def test_a_sliver_touching_the_part_is_not_a_second_body():
+    from base3d.mesh import as_written
+    a = trimesh.creation.box(bounds=[[0, 0, 0], [2, 3, 2]])
+    crumb = trimesh.creation.box(bounds=[[2, 3, 0], [2.1, 3.1, 2]])        # 0.02 mm3, along the box edge
+    got = as_written(trimesh.util.concatenate([a, crumb]))
+    assert got["bodies"] == 2 and got["touches"] == 1 and got["holes"] == 0
+    assert abs(got["loose_mm3"] - 0.02) < 0.001 and got["ok"]
