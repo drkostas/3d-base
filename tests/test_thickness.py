@@ -74,3 +74,47 @@ def test_a_thin_place_says_how_thin_it_is_throughout():
     plate = trimesh.creation.box(extents=(10, 10, 0.6))
     spot = T.thin_spots(plate, bar_mm=0.8, n=2000)[0]
     assert abs(spot["typical_mm"] - 0.6) < 0.02 and spot["typical_mm"] >= spot["mm"]
+
+
+def test_a_thin_plate_prints_lying_flat_and_not_on_its_edge():
+    plate = trimesh.creation.box(extents=(12, 12, 0.5))          # lying flat: two and a half layers
+    assert T.print_thin_spots(plate, n=3000) == []
+    standing = plate.copy()
+    standing.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
+    spots = T.print_thin_spots(standing, n=3000)
+    assert len(spots) == 1 and spots[0]["short_of"] == "lines" and spots[0]["size_mm"] > 11
+    assert abs(spots[0]["typical_width_mm"] - 0.5) < 0.02
+
+
+def test_a_plate_thinner_than_two_layers_is_short_of_layers():
+    sheet = trimesh.creation.box(extents=(12, 12, 0.3))
+    spots = T.print_thin_spots(sheet, n=3000)
+    assert len(spots) == 1 and spots[0]["short_of"] == "layers"
+    assert abs(spots[0]["typical_width_mm"] - 0.3) < 0.02
+
+
+def test_a_sloping_wall_is_judged_across_the_layer():
+    # 0.6 mm thick at 30 degrees from upright: 0.69 mm across a layer, so short of two lines
+    wall = trimesh.creation.box(extents=(12, 0.6, 12))
+    wall.apply_transform(trimesh.transformations.rotation_matrix(np.radians(30), [1, 0, 0]))
+    spots = T.print_thin_spots(wall, n=3000)
+    assert spots and spots[0]["short_of"] == "lines"
+    assert abs(spots[0]["typical_width_mm"] - 0.6 / np.cos(np.radians(30))) < 0.03
+    # the same wall at 60 degrees is 1.2 mm across a layer and 0.69 mm through them: it prints
+    flatter = trimesh.creation.box(extents=(12, 0.6, 12))
+    flatter.apply_transform(trimesh.transformations.rotation_matrix(np.radians(60), [1, 0, 0]))
+    assert T.print_thin_spots(flatter, n=3000) == []
+
+
+def test_up_can_be_any_direction():
+    plate = trimesh.creation.box(extents=(12, 12, 0.5))
+    assert T.print_thin_spots(plate, up=(1, 0, 0), n=3000)[0]["short_of"] == "lines"
+
+
+def test_the_command_line_can_judge_the_part_as_it_lies(tmp_path, capsys):
+    import json
+    from base3d.cli import main
+    p = tmp_path / "plate.stl"
+    trimesh.creation.box(extents=(10, 10, 0.6)).export(p)
+    assert main(["thickness", str(p), "--printed", "-n", "1500"]) == 0
+    assert json.loads(capsys.readouterr().out)["thin_spots"] == []
