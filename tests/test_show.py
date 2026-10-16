@@ -133,3 +133,21 @@ def test_a_caption_wraps_instead_of_shrinking():
     assert int(one.max()) > 100 and int(many.max()) > 100  # something was drawn
     with pytest.raises(ValueError):
         caption("a" * 200, 80)                             # one word wider than the band
+
+
+def test_sections_cut_a_part_three_ways_and_show_the_cut_face():
+    from base3d.show import sections, CUT
+    box = trimesh.creation.box(extents=(20, 12, 6))
+    img = sections(box, size=(120, 120))
+    assert 120 <= img.shape[0] <= 140 and 3 * 120 <= img.shape[1] <= 3 * 120 + 5 * 8 and img.shape[2] == 3
+    cut = (np.array(CUT) * 255).astype(int)
+    near = np.all(np.abs(img.astype(int) - cut) < 40, axis=2)
+    assert near.sum() > 500                          # the cut face is drawn in its colour
+
+
+def test_the_command_line_writes_the_sections(tmp_path, capsys):
+    from base3d.cli import main
+    p = tmp_path / "box.stl"
+    trimesh.creation.box(extents=(20, 12, 6)).export(p)
+    out = tmp_path / "s.png"
+    assert main(["sections", str(p), "-o", str(out)]) == 0 and out.exists()

@@ -261,6 +261,10 @@ for s in spots:
 - Ridges, teeth and grooves on a thick wall read as thin, because the ray crosses one ridge and
   leaves it. They print as bumps in the outer line. `backed_mm` leaves out a point whose ray meets the
   part again soon after leaving it. A free shell, fin or plate has open space behind it and stays in.
+- Look at the part cut open before changing it. `show.sections(mesh)` (or `3d-base sections
+  part.stl`) draws three cuts through its centre coloured by wall thickness, with the cut face in
+  blue. A ridge, a dip in a floor or a gap that is not where you thought shows there in a minute,
+  where a function written against the wrong shape costs a rebuild per guess.
 - Before thickening anything, find out which side can grow. A shell that sits on another part (a cap
   on a head) can only grow outward where there is no gap under it, and growing outward changes the
   look. Measure the gap first.
