@@ -22,7 +22,8 @@ Homepage = "https://github.com/drkostas/3d-base"
 
 [project.optional-dependencies]
 captions = ["pillow>=10.1"]
-test = ["pytest>=8", "pillow>=10.1"]
+sections = ["shapely>=2.0", "mapbox-earcut>=1.0"]
+test = ["pytest>=8", "pillow>=10.1", "shapely>=2.0", "mapbox-earcut>=1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

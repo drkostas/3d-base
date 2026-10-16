@@ -360,3 +360,46 @@ def caption(text, width, size=28, floor=12, pad=14, gap=6, bg=(20, 20, 20), fg=(
     if int(out.max()) <= max(bg) + 10:
         raise ValueError(f"the caption drew no pixels: {text!r}")
     return out
+
+
+CUT = (0.20, 0.55, 0.62)
+THIN, SHORT, THICK = (0.86, 0.22, 0.20), (0.95, 0.60, 0.18), (0.80, 0.80, 0.77)
+
+
+def sections(mesh, axes=None, bar_mm=0.8, one_line_mm=0.45, n=6000, size=(420, 420), bg=(0.09, 0.10, 0.11)):
+    """The part cut in half three ways, each half coloured by its wall thickness, as one image.
+
+    Look at this before changing a part's geometry. The cuts are through the part's centre, across
+    each of `axes` (by default the part's own principal directions, from surface points). The
+    face of each cut is CUT blue, the walls are THIN red under `one_line_mm`, SHORT orange under
+    `bar_mm` and THICK grey from there, read with `thickness.wall_thickness`. The camera looks
+    straight at each cut face. Needs shapely and mapbox-earcut (`pip install '3d-base[sections]'`).
+    """
+    try:
+        import shapely  # noqa: F401  (trimesh caps a cut with it)
+        import mapbox_earcut  # noqa: F401
+    except ImportError as e:
+        raise ImportError("sections needs shapely and mapbox-earcut: pip install '3d-base[sections]'") from e
+    from scipy.spatial import cKDTree
+    from .mesh import surface_points
+    from .thickness import face_thickness, wall_thickness
+    pts, _nrm, mm = wall_thickness(mesh, n=n)
+    ft = face_thickness(mesh, pts, mm)
+    cols = np.where(ft[:, None] < one_line_mm, THIN, np.where(ft[:, None] < bar_mm, SHORT, THICK))
+    P = np.asarray(surface_points(mesh, 6000), float)
+    c = P.mean(axis=0)
+    if axes is None:
+        axes = np.linalg.svd(P - c, full_matrices=False)[2]
+    axes = [np.asarray(a, float) / max(float(np.linalg.norm(a)), 1e-12) for a in axes]
+    r = float(np.linalg.norm(mesh.extents)) * 1.15
+    tiles = []
+    for a in axes:
+        half = trimesh.intersections.slice_mesh_plane(mesh, a, c, cap=True)
+        if half is None or not len(half.faces):
+            continue
+        fc = cols[cKDTree(mesh.triangles_center).query(half.triangles_center)[1]]
+        on = (np.abs((half.triangles_center - c) @ a) < 1e-4) & (np.abs(half.face_normals @ a) > 0.99)
+        fc[on] = CUT
+        up = (0.0, 0.0, 1.0) if abs(float(a[2])) < 0.9 else (0.0, 1.0, 0.0)
+        tiles.append(render(half, c - a * r, c, size=size, fov=34, up=up, face_colors=fc, bg=bg))
+    return tile(tiles, cols=len(tiles), gap=8, bg=20)

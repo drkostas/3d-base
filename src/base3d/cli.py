@@ -42,6 +42,11 @@ def main(argv=None) -> int:
     so.add_argument("mesh")
     so.add_argument("--bar", type=float, default=0.8, help="the thinnest wall that prints, in mm (default 0.8)")
 
+    sc = sub.add_parser("sections", help="the part cut in half three ways, coloured by wall thickness")
+    sc.add_argument("mesh")
+    sc.add_argument("-o", "--out", default="sections.png")
+    sc.add_argument("--bar", type=float, default=0.8, help="the thinnest wall that prints, in mm (default 0.8)")
+
     a = p.parse_args(argv)
     if a.cmd == "skill":
         dest = Path(a.dir).expanduser() / "3d-base"
@@ -53,6 +58,12 @@ def main(argv=None) -> int:
         rep = report(a.mesh)
         print(json.dumps(rep, indent=1))
         return 1 if rep["voids"] else 0
+    if a.cmd == "sections":
+        from .show import sections
+        m, _ = load_clean(a.mesh)
+        save_png(sections(m, bar_mm=a.bar), a.out)
+        print(a.out)
+        return 0
     if a.cmd == "sound":
         from .mesh import sound
         m, _ = load_clean(a.mesh)
