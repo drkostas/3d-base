@@ -376,9 +376,10 @@ def sections(mesh, axes=None, bar_mm=0.8, one_line_mm=0.45, n=6000, size=(420, 4
     straight at each cut face. Needs shapely and mapbox-earcut (`pip install '3d-base[sections]'`).
     """
     try:
-        import shapely  # noqa: F401  (trimesh caps a cut with it, and triangulates with earcut or triangle)
+        import networkx  # noqa: F401  (trimesh assembles the cut's polygons with it)
+        import shapely  # noqa: F401  (and caps and triangulates with shapely and earcut or triangle)
     except ImportError as e:
-        raise ImportError("sections needs shapely and a triangulator: pip install '3d-base[sections]'") from e
+        raise ImportError("sections needs shapely, networkx and a triangulator: pip install '3d-base[sections]'") from e
     from scipy.spatial import cKDTree
     from .mesh import surface_points
     from .thickness import face_thickness, wall_thickness
@@ -393,12 +394,41 @@ def sections(mesh, axes=None, bar_mm=0.8, one_line_mm=0.45, n=6000, size=(420, 4
     r = float(np.linalg.norm(mesh.extents)) * 1.15
     tiles = []
     for a in axes:
-        half = trimesh.intersections.slice_mesh_plane(mesh, a, c, cap=True)
+        half = trimesh.intersections.slice_mesh_plane(mesh, a, c, cap=False)
         if half is None or not len(half.faces):
             continue
         fc = cols[cKDTree(mesh.triangles_center).query(half.triangles_center)[1]]
-        on = (np.abs((half.triangles_center - c) @ a) < 1e-4) & (np.abs(half.face_normals @ a) > 0.99)
-        fc[on] = CUT
+        face_v, face_f = cut_face(mesh, a, c)
+        if len(face_f):
+            n0 = len(half.vertices)
+            half = trimesh.Trimesh(np.vstack([half.vertices, face_v]), np.vstack([half.faces, face_f + n0]),
+                                   process=False)
+            fc = np.vstack([fc, np.tile(CUT, (len(face_f), 1))])
         up = (0.0, 0.0, 1.0) if abs(float(a[2])) < 0.9 else (0.0, 1.0, 0.0)
         tiles.append(render(half, c - a * r, c, size=size, fov=34, up=up, face_colors=fc, bg=bg))
     return tile(tiles, cols=len(tiles), gap=8, bg=20)
+
+
+def cut_face(mesh, normal, origin, min_area=0.5):
+    """The face of a cut through `mesh` at the plane, as (vertices, faces) in 3D: every polygon of the
+    cut's outline with its holes, triangulated, polygons under `min_area` left out.
+
+    trimesh's own capping of a cut (`slice_mesh_plane(cap=True)`) comes back open when the outline
+    carries a zero-area loop, which a mesh with grazing seams can, and the picture then shows a cut
+    through a hollow part as a solid disc. Drawn from the outline's full polygons, a hole stays a hole.
+    """
+    sec = mesh.section(plane_origin=origin, plane_normal=normal)
+    if sec is None:
+        return np.zeros((0, 3)), np.zeros((0, 3), int)
+    planar, back = sec.to_planar()
+    V, F = [], []
+    for poly in planar.polygons_full:
+        if poly.area < min_area:
+            continue
+        v2, f = trimesh.creation.triangulate_polygon(poly)
+        v3 = trimesh.transform_points(np.c_[v2, np.zeros(len(v2))], back)
+        F.append(np.asarray(f, int) + sum(len(x) for x in V))
+        V.append(v3)
+    if not V:
+        return np.zeros((0, 3)), np.zeros((0, 3), int)
+    return np.vstack(V), np.vstack(F)
