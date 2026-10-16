@@ -75,8 +75,14 @@ def thin_spots(mesh: trimesh.Trimesh, bar_mm: float, n: int = 4000, seed: int = 
     """The places thinner than `bar_mm`, thinnest first.
 
     Thin points closer than `group_mm` to each other are one place. Each place is a dict with its
-    thinnest reading (`mm`), where that reading is (`at`), how many sample points fall in it
-    (`points`) and its extent (`size_mm`, the largest distance between two of its points).
+    thinnest reading (`mm`), where that reading is (`at`), its median reading (`typical_mm`), how many
+    sample points fall in it (`points`) and its extent (`size_mm`, the largest distance between two
+    of its points).
+
+    Read `typical_mm` and `size_mm` before `mm`. Material really is thin right next to a sharp edge
+    (a knife edge, a rim, the lip of a bore), so a place of one or two points with a low `mm` is an
+    edge, which printing only rounds. A wall too thin to print is a place that is large and thin
+    throughout, and its `typical_mm` says how thin.
     """
     pts, _normals, mm = wall_thickness(mesh, n=n, seed=seed)
     thin = np.nonzero(mm < bar_mm)[0]
@@ -93,7 +99,8 @@ def thin_spots(mesh: trimesh.Trimesh, bar_mm: float, n: int = 4000, seed: int = 
         idx = thin[label == g]
         k = idx[np.argmin(mm[idx])]
         span = float(np.ptp(pts[idx], axis=0).max()) if len(idx) > 1 else 0.0
-        spots.append({"mm": float(mm[k]), "at": [float(x) for x in pts[k]], "points": int(len(idx)),
+        spots.append({"mm": float(mm[k]), "at": [float(x) for x in pts[k]],
+                      "typical_mm": float(np.median(mm[idx])), "points": int(len(idx)),
                       "size_mm": span})
     return sorted(spots, key=lambda s: s["mm"])
 
