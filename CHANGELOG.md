@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `print_thin_spots(..., backed_mm=1.0)` leaves out ridges, teeth and grooves on a thick wall. A point whose ray meets the part again within `backed_mm` after leaving it is detail, which the slicer draws as a bump in the outer line, and a free wall has open space behind it.
 - `print_thin_spots(mesh)` judges each wall as the part lies on the plate. A wall standing upright needs two lines across a layer (`line_mm`, 0.8) and a plate lying flat needs two layers through it (`layer_mm`, 0.4), and a sloping wall is judged both ways. Each place says which it is short of. `3d-base thickness part.stl --printed` does the same from the command line, with the part's +z up.
 - `thin_spots` gives each place its median reading as `typical_mm`, beside the thinnest one. Material is really thin right next to a sharp edge, so a small place with a low `mm` is an edge. A wall too thin to print is large and thin throughout.
 - `base3d.thickness`: how thick a part is at each point of its surface (a ray straight in from each sample point to the far side), `thin_spots(mesh, bar_mm)` for the places thinner than a printer can draw, grouped and thinnest first, and `face_thickness` to colour a picture by it. A surface written twice is passed through rather than read as a wall, and a closed mesh written inside out is read from the right side. `3d-base thickness part.stl --bar 0.8` prints the same as JSON and exits 1 when anything is under the bar. `rtree` is now a dependency, for trimesh's ray queries.
