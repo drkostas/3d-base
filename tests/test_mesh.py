@@ -102,3 +102,12 @@ def test_a_sliver_touching_the_part_is_not_a_second_body():
     got = as_written(trimesh.util.concatenate([a, crumb]))
     assert got["bodies"] == 2 and got["touches"] == 1 and got["holes"] == 0
     assert abs(got["loose_mm3"] - 0.02) < 0.001 and got["ok"]
+
+
+def test_a_shell_inside_the_part_is_not_loose():
+    # two closed shells, one inside the other, print as one solid
+    from base3d.mesh import as_written
+    outer = trimesh.creation.box(bounds=[[0, 0, 0], [10, 10, 10]])
+    inner = trimesh.creation.box(bounds=[[4, 4, 4], [6, 6, 6]])
+    got = as_written(trimesh.util.concatenate([outer, inner]))
+    assert got["bodies"] == 2 and got["holes"] == 0 and got["loose_mm3"] == 0.0 and got["ok"]
