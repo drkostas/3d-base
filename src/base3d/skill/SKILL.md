@@ -328,6 +328,24 @@ fixed each.
 - A fill sampled by rays from a centre also reaches surfaces it was not meant for (the underside of
   a brim far out from the centre). Limit how far it may reach.
 
+## trimesh calls that cost a build each to learn
+
+- A cut half is `trimesh.intersections.slice_mesh_plane(mesh, plane_normal, plane_origin, cap=True)`
+  (there is no `slice_plane`), and capping needs shapely and mapbox-earcut. A cut outline is
+  `mesh.section(plane_origin=, plane_normal=)`, then `.to_planar()` for 2D polygons.
+- `mesh.contains(points)` and `mesh.ray.intersects_location(origins, directions)` take memory in
+  proportion to the points. Send them in batches of about two thousand, as `wall_thickness` does.
+- `mesh.split()` on a mesh with holes calls `fill_holes`, which needs networkx. Count pieces from
+  `face_adjacency` instead (`mesh.sound` and `as_written` do).
+- `trimesh.boolean` with the manifold engine casts both ways to 32-bit floats. See the section on
+  booleans that leave touching surfaces.
+- Icospheres from `trimesh.creation.icosphere(subdivisions=k)` keep every vertex of the lower
+  subdivisions, so two about the same centre share directions. Turn one by a few degrees.
+- `trimesh.creation.revolve(profile)` needs a closed profile loop (repeat the first point) to make
+  a solid, and the result can come out inside out: check `volume < 0` and `invert()`.
+- `mesh.centroid` is the centre of mass of the solid. Thickening a part moves it; the centre of
+  its bounds, or a flat face's normal for an axis, does not.
+
 ## Showing pictures to a person for a decision
 
 Put the numbers in the picture itself with `show.caption(text, width)`, which wraps a long caption

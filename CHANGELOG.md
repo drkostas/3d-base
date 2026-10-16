@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The skill has a section of trimesh calls that cost a build each to learn: the cut and section functions, batching `contains` and ray queries, `split` on an open mesh, booleans in 32 bits, icospheres sharing directions, revolve profiles, and `centroid`.
 - `show.sections(mesh)` cuts the part in half three ways, across its own principal directions, and shows each half coloured by its wall thickness with the cut face in blue, for looking at a part before changing it. `3d-base sections part.stl -o cuts.png` writes the same. Needs shapely and mapbox-earcut, installed with `3d-base[sections]`.
 - `mesh.sound(mesh)` is one call for whether a part is sound to print, with every reason it is not in plain words: not closed, more than one piece, a sealed void, a file that reads back with a hole or a loose piece, a wall too thin over a real distance. `3d-base sound part.stl` does the same and exits 1 on any fault.
 - `show.caption(text, width)` draws a caption into an image to stack with pictures. It wraps words into lines at one type size rather than shrinking the type, and only a word wider than the band shrinks it. Needs Pillow, installed with `3d-base[captions]`.
