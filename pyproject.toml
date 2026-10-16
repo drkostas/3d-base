@@ -21,7 +21,8 @@ Homepage = "https://github.com/drkostas/3d-base"
 3d-base = "base3d.cli:main"
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+captions = ["pillow>=10.1"]
+test = ["pytest>=8", "pillow>=10.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

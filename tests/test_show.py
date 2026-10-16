@@ -120,3 +120,16 @@ def test_png_is_valid(tmp_path):
     raw = zlib.decompress(data[41:41 + idat_len])
     row = raw[1 * 13 + 1:(1 * 13) + 13]
     assert row[6:9] == bytes((10, 20, 30))
+
+
+def test_a_caption_wraps_instead_of_shrinking():
+    import pytest
+    from base3d.show import caption
+    one = caption("a short caption", 600)
+    many = caption("a caption long enough that it cannot sit on one line of a band this wide, "
+                   "which must wrap into lines rather than shrink the type", 600)
+    assert one.shape[1] == many.shape[1] == 600 and one.shape[2] == 3
+    assert many.shape[0] >= 2 * one.shape[0] - 14          # more lines, the same type size
+    assert int(one.max()) > 100 and int(many.max()) > 100  # something was drawn
+    with pytest.raises(ValueError):
+        caption("a" * 200, 80)                             # one word wider than the band
