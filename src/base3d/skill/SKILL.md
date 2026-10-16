@@ -273,6 +273,7 @@ faces. `load_clean` drops those faces, and after that a second body is real.
 
 ```python
 mesh, bodies = load_clean("part.stl")
+print(sound(mesh)["faults"])        # every reason it is not sound to print, or []
 print(report("part.stl"))           # faces, bodies, voids, watertight, volume, extents
 assert len(bodies) == 1, [round(float(b.volume), 3) for b in bodies]
 assert not voids(bodies)            # negative volume means a sealed cavity

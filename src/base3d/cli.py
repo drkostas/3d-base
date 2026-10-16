@@ -38,6 +38,10 @@ def main(argv=None) -> int:
     t.add_argument("--printed", action="store_true",
                    help="judge each wall as the part lies, +z up: two lines across a layer, two layers through a flat plate")
 
+    so = sub.add_parser("sound", help="whether a part is sound to print, and every reason it is not")
+    so.add_argument("mesh")
+    so.add_argument("--bar", type=float, default=0.8, help="the thinnest wall that prints, in mm (default 0.8)")
+
     a = p.parse_args(argv)
     if a.cmd == "skill":
         dest = Path(a.dir).expanduser() / "3d-base"
@@ -49,6 +53,12 @@ def main(argv=None) -> int:
         rep = report(a.mesh)
         print(json.dumps(rep, indent=1))
         return 1 if rep["voids"] else 0
+    if a.cmd == "sound":
+        from .mesh import sound
+        m, _ = load_clean(a.mesh)
+        rep = sound(m, bar_mm=a.bar)
+        print(json.dumps(rep, indent=1))
+        return 1 if rep["faults"] else 0
     if a.cmd == "thickness":
         from .thickness import print_thin_spots, thin_spots, wall_thickness
         m, _ = load_clean(a.mesh)
