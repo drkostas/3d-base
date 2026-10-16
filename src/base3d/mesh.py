@@ -186,3 +186,73 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
             loose += abs(float(q.volume))
     return {"ok": holes == 0 and loose <= loose_mm3, "bodies": int(bodies), "holes": holes,
             "touches": touches, "loose_mm3": float(loose)}
+
+
+def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0.3) -> trimesh.Trimesh:
+    """A hollow part made solid from its outer skin, by removing its inner surface.
+
+    The inner surface is taken as the one connected region of faces that point toward `centre`
+    (the cosine of the angle between the face normal and the direction to `centre` is above
+    `lean`), lie within `reach` of it, and are joined to the face nearest to it. Removing them leaves
+    the skin open along one or more loops (the inner edge of a rim, the root of a brim), and each
+    loop is closed with a fan of triangles to `centre`. The result has the same outside and no inside,
+    so a cavity cut into it afterwards (a bore for a part it sits on) is the only inside it has.
+
+    This exists because filling a hollow part by uniting a fill with it leaves air wherever the fill
+    meets the inner surface at a grazing angle, which a slicer prints as tunnels. With no inner
+    surface there is nothing for air to lie against. Raises ValueError when the skin cannot be closed.
+    """
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
+    centre = np.asarray(centre, float)
+    c = np.asarray(mesh.triangles_center, float)
+    n = np.asarray(mesh.face_normals, float)
+    to_c = centre - c
+    dist = np.linalg.norm(to_c, axis=1)
+    to_c = to_c / np.maximum(dist, 1e-12)[:, None]
+    cand = (dist < float(reach)) & (np.einsum("ij,ij->i", n, to_c) > lean)
+    if not cand.any():
+        raise ValueError("no face points toward the centre within reach")
+    adj = np.asarray(mesh.face_adjacency)
+    both = cand[adj[:, 0]] & cand[adj[:, 1]]
+    graph = sp.coo_matrix((np.ones(int(both.sum())), (adj[both, 0], adj[both, 1])), shape=(len(c), len(c)))
+    _k, label = connected_components(graph, directed=False)
+    seed = int(np.argmin(np.where(cand, dist, np.inf)))
+    inner = cand & (label == label[seed])
+    faces = np.asarray(mesh.faces)[~inner]
+    skin = trimesh.Trimesh(np.asarray(mesh.vertices, float), faces, process=False)
+    edges = np.sort(np.asarray(skin.edges), axis=1)
+    uniq, count = np.unique(edges, axis=0, return_counts=True)
+    rim = uniq[count == 1]
+    V = np.vstack([skin.vertices, centre[None, :]])
+    apex = len(V) - 1
+    fan = [[a, b, apex] for loop in _loops(rim) for a, b in zip(loop, loop[1:] + loop[:1])]
+    solid = trimesh.Trimesh(V, np.vstack([faces, np.asarray(fan, int).reshape(-1, 3)]), process=False)
+    solid.merge_vertices()
+    if not solid.is_watertight:
+        raise ValueError("the skin could not be closed")
+    if solid.volume < 0:
+        solid.invert()
+    return solid
+
+
+def _loops(edges):
+    """Closed loops in a set of boundary edges, as vertex lists."""
+    nxt = {}
+    for a, b in np.asarray(edges).tolist():
+        nxt.setdefault(a, []).append(b)
+        nxt.setdefault(b, []).append(a)
+    seen, loops = set(), []
+    for start in nxt:
+        if start in seen:
+            continue
+        loop, prev, cur = [start], None, start
+        while True:
+            seen.add(cur)
+            after = [v for v in nxt[cur] if v != prev and v not in seen]
+            if not after:
+                break
+            prev, cur = cur, after[0]
+            loop.append(cur)
+        loops.append(loop)
+    return loops

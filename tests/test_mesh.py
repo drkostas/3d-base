@@ -134,3 +134,20 @@ def test_the_command_line_says_whether_a_part_is_sound(tmp_path, capsys):
     trimesh.creation.box(extents=(10, 10, 10)).export(p)
     assert main(["sound", str(p)]) == 0
     assert json.loads(capsys.readouterr().out)["faults"] == []
+
+
+def test_a_hollow_dome_becomes_a_solid_one_from_its_skin():
+    from base3d.mesh import solid_from_skin
+    # a dome shell 10 mm out, 9 mm in, open at the bottom, as a solid of revolution
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.cos(t), 10 * np.sin(t)][::-1]       # from the top down to the rim
+    inner = np.c_[9 * np.cos(t), 9 * np.sin(t)]                 # from the rim back up to the top
+    profile = np.vstack([outer, inner, outer[:1]])
+    dome = trimesh.creation.revolve(profile, sections=64)
+    if dome.volume < 0:
+        dome.invert()
+    assert dome.is_watertight
+    solid = solid_from_skin(dome, centre=(0, 0, 0), reach=9.5)
+    assert solid.is_watertight and solid.euler_number == 2
+    assert abs(solid.volume - 2.0 / 3.0 * np.pi * 1000) < 0.03 * 2094   # a solid half ball
+    assert abs(solid.bounds[1][2] - 10.0) < 1e-6                        # the outside is kept
