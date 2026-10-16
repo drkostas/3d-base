@@ -9,6 +9,7 @@ thin fin on a thick block as the fin's own width.
 
     pts, normals, mm = wall_thickness(mesh)          # one reading per sample point
     spots = thin_spots(mesh, bar_mm=0.8)             # the places under 0.8 mm, grouped
+    spots = print_thin_spots(mesh)                   # the same, for the part as it lies on the plate
 
 Use a closed mesh with outward normals. A ray that leaves through a hole in the surface meets nothing,
 and its reading is `inf`.
@@ -85,7 +86,11 @@ def thin_spots(mesh: trimesh.Trimesh, bar_mm: float, n: int = 4000, seed: int = 
     throughout, and its `typical_mm` says how thin.
     """
     pts, _normals, mm = wall_thickness(mesh, n=n, seed=seed)
-    thin = np.nonzero(mm < bar_mm)[0]
+    return _group(pts, mm, np.nonzero(mm < bar_mm)[0], group_mm)
+
+
+def _group(pts, mm, thin, group_mm, extra=None):
+    """The thin points `thin` (indices) grouped into places, each a dict, thinnest first."""
     if not len(thin):
         return []
     from scipy.sparse.csgraph import connected_components
@@ -99,10 +104,56 @@ def thin_spots(mesh: trimesh.Trimesh, bar_mm: float, n: int = 4000, seed: int = 
         idx = thin[label == g]
         k = idx[np.argmin(mm[idx])]
         span = float(np.ptp(pts[idx], axis=0).max()) if len(idx) > 1 else 0.0
-        spots.append({"mm": float(mm[k]), "at": [float(x) for x in pts[k]],
-                      "typical_mm": float(np.median(mm[idx])), "points": int(len(idx)),
-                      "size_mm": span})
+        spot = {"mm": float(mm[k]), "at": [float(x) for x in pts[k]],
+                "typical_mm": float(np.median(mm[idx])), "points": int(len(idx)), "size_mm": span}
+        if extra is not None:
+            spot.update(extra(idx))
+        spots.append(spot)
     return sorted(spots, key=lambda s: s["mm"])
+
+
+#: a wall inside one layer needs two lines of a 0.4 mm nozzle, and a plate lying flat two 0.2 mm layers
+LINE_MM = 0.8
+LAYER_MM = 0.4
+
+
+def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: float = LAYER_MM,
+                     up=(0.0, 0.0, 1.0), n: int = 4000, seed: int = SAMPLE_SEED,
+                     group_mm: float = 1.5) -> list[dict]:
+    """The places too thin to print, for the part as it lies on the plate, thinnest first.
+
+    A slicer cuts the part into layers across `up`, and how much a wall gets depends on which way it
+    faces. A wall standing upright is drawn with lines inside each layer, and needs `line_mm` across
+    (two lines). A plate lying flat is drawn as a stack of layers, and needs `layer_mm` through (two
+    layers). A wall at a slope is both at once: inside one layer it is as wide as its thickness over
+    the sideways part of its normal, and through the layers as deep as its thickness over the upward
+    part. A point is thin when either falls under its bar. So a flat 0.5 mm plate is fine, and the
+    same plate stood on its edge is not.
+
+    Each place is a dict like `thin_spots` gives (its `mm` and `typical_mm` are the wall's own
+    thickness), with `lines` or `layers` as `short_of` (which bar most of its points miss) and
+    `typical_width_mm` (the median of what they have of it, across the layer or through the layers).
+    """
+    up = np.asarray(up, float)
+    up = up / float(np.linalg.norm(up))
+    pts, normals, mm = wall_thickness(mesh, n=n, seed=seed)
+    vert = np.abs(normals @ up)
+    side = np.sqrt(np.clip(1.0 - vert ** 2, 0.0, 1.0))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        across = np.where(side > 1e-6, mm / side, np.inf)        # inside one layer
+        through = np.where(vert > 1e-6, mm / vert, np.inf)       # through the layers
+    short_lines = across < line_mm
+    short_layers = through < layer_mm
+    thin = np.nonzero(short_lines | short_layers)[0]
+
+    def extra(idx):
+        lines = int(short_lines[idx].sum()) >= int(short_layers[idx].sum())
+        have = across[idx] if lines else through[idx]
+        return {"short_of": "lines" if lines else "layers",
+                "typical_width_mm": float(np.median(have[np.isfinite(have)])) if np.isfinite(have).any()
+                else float("inf")}
+
+    return _group(pts, mm, thin, group_mm, extra)
 
 
 def face_thickness(mesh: trimesh.Trimesh, points, mm) -> np.ndarray:

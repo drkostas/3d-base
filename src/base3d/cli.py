@@ -35,6 +35,8 @@ def main(argv=None) -> int:
     t.add_argument("mesh")
     t.add_argument("--bar", type=float, default=0.8, help="the thinnest wall that prints, in mm (default 0.8)")
     t.add_argument("-n", type=int, default=4000, help="sample points on the surface (default 4000)")
+    t.add_argument("--printed", action="store_true",
+                   help="judge each wall as the part lies, +z up: two lines across a layer, two layers through a flat plate")
 
     a = p.parse_args(argv)
     if a.cmd == "skill":
@@ -48,11 +50,11 @@ def main(argv=None) -> int:
         print(json.dumps(rep, indent=1))
         return 1 if rep["voids"] else 0
     if a.cmd == "thickness":
-        from .thickness import thin_spots, wall_thickness
+        from .thickness import print_thin_spots, thin_spots, wall_thickness
         m, _ = load_clean(a.mesh)
         _pts, _nrm, mm = wall_thickness(m, n=a.n)
         finite = [float(x) for x in mm if x != float("inf")]
-        spots = thin_spots(m, a.bar, n=a.n)
+        spots = print_thin_spots(m, line_mm=a.bar, n=a.n) if a.printed else thin_spots(m, a.bar, n=a.n)
         print(json.dumps({"thinnest_mm": min(finite) if finite else None, "bar_mm": a.bar,
                           "thin_spots": spots}, indent=1))
         return 1 if spots else 0
