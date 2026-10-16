@@ -31,6 +31,11 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="faces, bodies, closed cavities and volume, after dropping slivers")
     c.add_argument("mesh")
 
+    t = sub.add_parser("thickness", help="the thinnest walls, and every place thinner than a bar")
+    t.add_argument("mesh")
+    t.add_argument("--bar", type=float, default=0.8, help="the thinnest wall that prints, in mm (default 0.8)")
+    t.add_argument("-n", type=int, default=4000, help="sample points on the surface (default 4000)")
+
     a = p.parse_args(argv)
     if a.cmd == "skill":
         dest = Path(a.dir).expanduser() / "3d-base"
@@ -42,6 +47,15 @@ def main(argv=None) -> int:
         rep = report(a.mesh)
         print(json.dumps(rep, indent=1))
         return 1 if rep["voids"] else 0
+    if a.cmd == "thickness":
+        from .thickness import thin_spots, wall_thickness
+        m, _ = load_clean(a.mesh)
+        _pts, _nrm, mm = wall_thickness(m, n=a.n)
+        finite = [float(x) for x in mm if x != float("inf")]
+        spots = thin_spots(m, a.bar, n=a.n)
+        print(json.dumps({"thinnest_mm": min(finite) if finite else None, "bar_mm": a.bar,
+                          "thin_spots": spots}, indent=1))
+        return 1 if spots else 0
     m, _ = load_clean(a.mesh)
     w, h = (int(x) for x in a.size.lower().split("x"))
     if a.view == "sheet":
