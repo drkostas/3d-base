@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "Konstantinos Georgiou" }]
-dependencies = ["numpy>=1.22", "trimesh>=3.20", "scipy>=1.8"]
+dependencies = ["numpy>=1.22", "trimesh>=3.20", "scipy>=1.8", "rtree>=1.0"]
 keywords = ["3d", "mesh", "stl", "render", "headless", "trimesh", "3d-printing", "cad"]
 classifiers = ["Programming Language :: Python :: 3", "Topic :: Multimedia :: Graphics :: 3D Rendering"]
 
