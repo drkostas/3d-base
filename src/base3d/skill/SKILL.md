@@ -302,9 +302,10 @@ assert not voids(bodies)            # negative volume means a sealed cavity
 - One closed body in memory is not one closed body in the file. A boolean can keep two vertices a
   hundred millionth of a millimetre apart, separate only by their index. An STL has 32-bit
   coordinates and no indices, and a reader joins vertices by position. Check what the slicer will
-  read with `as_written(mesh)`. Its `holes` (edges with an odd number of faces) and a second body are
-  defects, and `touches` (edges with four faces, two sheets touching) still slice as they are. A part
-  that was one body in memory read back as 8 bodies with 41 holed edges.
+  read with `as_written(mesh)`. Its `holes` (edges with an odd number of faces) and a second piece of
+  real volume (`loose_mm3`) are defects, and `touches` (edges with four faces, two sheets touching)
+  still slice as they are; the slivers a boolean leaves at a touch pass under `loose_mm3`. A part
+  that was one body in memory read back as 8 pieces with 41 holed edges.
 
 ## Booleans that leave touching surfaces
 
