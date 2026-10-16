@@ -68,3 +68,9 @@ def test_the_command_line_names_the_thin_places(tmp_path, capsys):
     assert main(["thickness", str(p), "--bar", "0.8", "-n", "1500"]) == 1
     out = json.loads(capsys.readouterr().out)
     assert abs(out["thinnest_mm"] - 0.6) < 0.02 and len(out["thin_spots"]) == 1
+
+
+def test_a_thin_place_says_how_thin_it_is_throughout():
+    plate = trimesh.creation.box(extents=(10, 10, 0.6))
+    spot = T.thin_spots(plate, bar_mm=0.8, n=2000)[0]
+    assert abs(spot["typical_mm"] - 0.6) < 0.02 and spot["typical_mm"] >= spot["mm"]
