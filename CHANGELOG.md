@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `base3d.mesh.as_written(mesh)` writes the mesh as an STL, reads it back as a slicer would, and counts bodies, holes (edges with an odd number of faces) and touches (edges shared by four faces). A boolean can leave vertices apart only by their index, and a 32-bit file welds them.
+- The skill has a section on walls that print, the read-back check, and booleans that leave touching surfaces.
 - `print_thin_spots(..., backed_mm=1.0)` leaves out ridges, teeth and grooves on a thick wall. A point whose ray meets the part again within `backed_mm` after leaving it is detail, which the slicer draws as a bump in the outer line, and a free wall has open space behind it.
 - `print_thin_spots(mesh)` judges each wall as the part lies on the plate. A wall standing upright needs two lines across a layer (`line_mm`, 0.8) and a plate lying flat needs two layers through it (`layer_mm`, 0.4), and a sloping wall is judged both ways. Each place says which it is short of. `3d-base thickness part.stl --printed` does the same from the command line, with the part's +z up.
 - `thin_spots` gives each place its median reading as `typical_mm`, beside the thinnest one. Material is really thin right next to a sharp edge, so a small place with a low `mm` is an edge. A wall too thin to print is large and thin throughout.

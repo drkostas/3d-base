@@ -67,3 +67,28 @@ def test_skill_installs(tmp_path, capsys):
     assert main(["skill", "--dir", str(tmp_path)]) == 0
     text = (tmp_path / "3d-base" / "SKILL.md").read_text()
     assert text.startswith("---\nname: 3d-base\n")
+
+
+def test_a_closed_box_reads_back_as_one_body():
+    from base3d.mesh import as_written
+    assert as_written(trimesh.creation.box()) == {"ok": True, "bodies": 1, "holes": 0, "touches": 0}
+
+
+def test_a_missing_face_reads_back_as_a_hole():
+    from base3d.mesh import as_written
+    m = trimesh.creation.box()
+    m.update_faces([True] * 11 + [False])
+    got = as_written(m)
+    assert not got["ok"] and got["holes"] == 3
+
+
+def test_two_blocks_kept_apart_by_index_weld_where_they_touch():
+    # in memory these are two closed blocks with no shared vertex; written to an STL and read back,
+    # the edge they share in space is shared by four faces
+    from base3d.mesh import as_written
+    a = trimesh.creation.box(bounds=[[0, 0, 0], [2, 3, 2]])
+    b = trimesh.creation.box(bounds=[[2, 3, 0], [4, 5, 2]])
+    both = trimesh.util.concatenate([a, b])
+    assert both.is_watertight
+    got = as_written(both)
+    assert got["touches"] == 1 and got["holes"] == 0 and not got["ok"]
