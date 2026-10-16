@@ -112,6 +112,23 @@ def _group(pts, mm, thin, group_mm, extra=None):
     return sorted(spots, key=lambda s: s["mm"])
 
 
+def _backed(mesh, pts, normals, mm, which, backed_mm, batch=2000):
+    """For the points `which`, whether the ray that measured them meets the part again within
+    `backed_mm` after leaving it."""
+    out = np.zeros(len(pts), bool)
+    idx = np.nonzero(which & np.isfinite(mm))[0]
+    for i in range(0, len(idx), batch):
+        k = idx[i:i + batch]
+        d = -normals[k]
+        origins = pts[k] + d * (mm[k][:, None] + START_MM)
+        loc, ray, _tri = mesh.ray.intersects_location(origins, d, multiple_hits=False)
+        if not len(ray):
+            continue
+        dist = np.linalg.norm(loc - origins[ray], axis=1)
+        out[k[ray[dist < backed_mm]]] = True
+    return out
+
+
 #: a wall inside one layer needs two lines of a 0.4 mm nozzle, and a plate lying flat two 0.2 mm layers
 LINE_MM = 0.8
 LAYER_MM = 0.4
@@ -119,7 +136,7 @@ LAYER_MM = 0.4
 
 def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: float = LAYER_MM,
                      up=(0.0, 0.0, 1.0), n: int = 4000, seed: int = SAMPLE_SEED,
-                     group_mm: float = 1.5) -> list[dict]:
+                     group_mm: float = 1.5, backed_mm: float | None = None) -> list[dict]:
     """The places too thin to print, for the part as it lies on the plate, thinnest first.
 
     A slicer cuts the part into layers across `up`, and how much a wall gets depends on which way it
@@ -133,6 +150,12 @@ def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: 
     Each place is a dict like `thin_spots` gives (its `mm` and `typical_mm` are the wall's own
     thickness), with `lines` or `layers` as `short_of` (which bar most of its points miss) and
     `typical_width_mm` (the median of what they have of it, across the layer or through the layers).
+
+    A ridge, a tooth or a row of grooves on a thick wall reads as thin, because the ray crosses one
+    ridge and leaves it. The slicer draws such detail as a bump in the outer line of a wall that is
+    thick behind it. With `backed_mm`, a point whose ray meets the part again within that distance
+    after leaving it is taken as detail of that kind and left out. A free wall (a shell, a fin, a
+    plate) has open space behind it and stays in.
     """
     up = np.asarray(up, float)
     up = up / float(np.linalg.norm(up))
@@ -144,7 +167,10 @@ def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: 
         through = np.where(vert > 1e-6, mm / vert, np.inf)       # through the layers
     short_lines = across < line_mm
     short_layers = through < layer_mm
-    thin = np.nonzero(short_lines | short_layers)[0]
+    short = short_lines | short_layers
+    if backed_mm is not None and short.any():
+        short &= ~_backed(mesh, pts, normals, mm, short, backed_mm)
+    thin = np.nonzero(short)[0]
 
     def extra(idx):
         lines = int(short_lines[idx].sum()) >= int(short_layers[idx].sum())
