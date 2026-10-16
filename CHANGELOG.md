@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `print_thin_spots` reads a place's `typical_width_mm` from the points short of the bar it names. A group split evenly between an upright wall and a nearly flat plate averaged the two and reported a width of thousands of millimetres.
 - `base3d.mesh.as_written(mesh)` writes the mesh as an STL, reads it back as a slicer would, and counts bodies, holes (edges with an odd number of faces) and touches (edges shared by four faces). A boolean can leave vertices apart only by their index, and a 32-bit file welds them.
 - The skill has a section on walls that print, the read-back check, and booleans that leave touching surfaces.
 - `print_thin_spots(..., backed_mm=1.0)` leaves out ridges, teeth and grooves on a thick wall. A point whose ray meets the part again within `backed_mm` after leaving it is detail, which the slicer draws as a bump in the outer line, and a free wall has open space behind it.

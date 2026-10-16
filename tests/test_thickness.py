@@ -137,3 +137,18 @@ def test_a_plate_with_the_part_close_behind_it_is_detail_and_a_free_fin_is_not()
     kept = T.print_thin_spots(part, n=8000, backed_mm=1.0)
     assert not any(middle(s) for s in kept)              # with it the middle plate is detail
     assert any(s["at"][0] > 19 for s in kept)            # and the free fin is still thin
+
+
+def test_a_tied_group_reads_the_width_of_the_bar_it_is_short_of(monkeypatch):
+    # four points of an upright 0.5 mm wall and four of a 0.3 mm plate a hair off flat, all within a
+    # millimetre: one group, short of lines by the tie-break, and its width is the wall's, not an
+    # average with the plate's enormous reach across a layer
+    pts = np.array([[0.0, 0, 0], [0.2, 0, 0], [0.4, 0, 0], [0.6, 0, 0],
+                    [0.0, 0.2, 0], [0.2, 0.2, 0], [0.4, 0.2, 0], [0.6, 0.2, 0]])
+    tilt = np.radians(0.01)
+    nrm = np.array([[1.0, 0, 0]] * 4 + [[np.sin(tilt), 0, np.cos(tilt)]] * 4)
+    mm = np.array([0.5] * 4 + [0.3] * 4)
+    monkeypatch.setattr(T, "wall_thickness", lambda mesh, n=4000, seed=0, **kw: (pts, nrm, mm))
+    spots = T.print_thin_spots(trimesh.creation.box(), n=8)
+    assert len(spots) == 1 and spots[0]["short_of"] == "lines"
+    assert abs(spots[0]["typical_width_mm"] - 0.5) < 0.01
