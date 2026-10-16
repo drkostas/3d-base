@@ -98,8 +98,9 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
     Returns `bodies` (the pieces joined face to face; two closed sheets that only touch along an
     edge are two pieces), `holes` (edges with an odd number of faces, where a slicer has to guess),
     `touches` (edges with four faces, two closed sheets touching, which still slice as they are),
-    `loose_mm3` (the volume of every piece but the largest) and `ok`, which is no hole and nothing
-    loose beyond `loose_mm3`: a boolean's slivers at a touch pass, a real second piece does not.
+    `loose_mm3` (the volume of every piece outside the largest one; a piece whose centre is inside
+    it overlaps it, and a slicer prints overlapping shells as one solid) and `ok`, which is no hole
+    and nothing loose beyond `loose_mm3`: a boolean's slivers pass, a real second piece does not.
     """
     import io
     buf = io.BytesIO()
@@ -122,8 +123,19 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
     n = len(back.faces)
     adj = coo_matrix((np.ones(int(same.sum())), (fac[:-1][same], fac[1:][same])), shape=(n, n))
     bodies, label = connected_components(adj, directed=False)
-    vols = sorted((abs(float(trimesh.Trimesh(back.vertices, back.faces[label == k], process=False).volume))
-                   for k in range(bodies)), reverse=True)
-    loose = float(sum(vols[1:]))
+    pieces = [trimesh.Trimesh(back.vertices, back.faces[label == k], process=False) for k in range(bodies)]
+    pieces.sort(key=lambda q: -abs(float(q.volume)))
+    loose = 0.0
+    for q in pieces[1:]:
+        # a closed piece whose centre lies inside the largest piece overlaps it, and a slicer
+        # prints overlapping shells as one solid; a piece outside the largest one is loose
+        inside = False
+        if holes == 0:
+            try:
+                inside = bool(pieces[0].contains([np.asarray(q.centroid, float)])[0])
+            except Exception:
+                inside = False
+        if not inside:
+            loose += abs(float(q.volume))
     return {"ok": holes == 0 and loose <= loose_mm3, "bodies": int(bodies), "holes": holes,
-            "touches": touches, "loose_mm3": loose}
+            "touches": touches, "loose_mm3": float(loose)}
