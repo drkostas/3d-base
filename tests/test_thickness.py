@@ -120,18 +120,20 @@ def test_the_command_line_can_judge_the_part_as_it_lies(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["thin_spots"] == []
 
 
-def test_ridges_on_a_thick_wall_are_detail_and_a_free_fin_is_not():
-    block = trimesh.creation.box(extents=(10, 10, 10))
-    ridges = []
-    for k in range(4):                                   # four 0.4 mm ridges, 0.4 mm apart, up the +x face
-        r = trimesh.creation.box(extents=(0.4, 8, 0.4))
-        r.apply_translation((5.19, 0, -3 + k * 0.8))
-        ridges.append(r)
-    fin = trimesh.creation.box(extents=(0.5, 6, 6))      # a free fin standing off the -y face
-    fin.apply_translation((0, -7.99, 0))
-    part = trimesh.boolean.union([block, fin] + ridges)
-    assert len(part.split()) == 1
+def test_a_plate_with_the_part_close_behind_it_is_detail_and_a_free_fin_is_not():
+    # three 0.4 mm plates 0.3 mm apart, as ridges stand on a wall, and a free 0.5 mm fin far away.
+    # Built from separate solids, so the test needs no boolean engine.
+    plates = []
+    for k in range(3):
+        p = trimesh.creation.box(extents=(0.4, 10, 10))
+        p.apply_translation((k * 0.7, 0, 0))
+        plates.append(p)
+    fin = trimesh.creation.box(extents=(0.5, 10, 10))
+    fin.apply_translation((20, 0, 0))
+    part = trimesh.util.concatenate(plates + [fin])
+    middle = lambda s: 0.5 < s["at"][0] < 0.9
     every = T.print_thin_spots(part, n=8000)
-    assert any(s["at"][0] > 5 for s in every)            # without backed_mm the ridges read thin
+    assert any(middle(s) for s in every)                 # without backed_mm the middle plate reads thin
     kept = T.print_thin_spots(part, n=8000, backed_mm=1.0)
-    assert kept and all(s["at"][1] < -5 for s in kept)   # with it only the fin is left
+    assert not any(middle(s) for s in kept)              # with it the middle plate is detail
+    assert any(s["at"][0] > 19 for s in kept)            # and the free fin is still thin
