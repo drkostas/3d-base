@@ -151,3 +151,14 @@ def test_the_command_line_writes_the_sections(tmp_path, capsys):
     trimesh.creation.box(extents=(20, 12, 6)).export(p)
     out = tmp_path / "s.png"
     assert main(["sections", str(p), "-o", str(out)]) == 0 and out.exists()
+
+
+def test_the_cut_face_of_a_tube_is_a_ring():
+    from base3d.show import cut_face
+    profile = np.array([[9.0, 0.0], [10.0, 0.0], [10.0, 10.0], [9.0, 10.0], [9.0, 0.0]])
+    tube = trimesh.creation.revolve(profile, sections=96)
+    if tube.volume < 0:
+        tube.invert()
+    v, f = cut_face(tube, [0, 0, 1.0], [0, 0, 5.0])
+    area = trimesh.Trimesh(v, f, process=False).area
+    assert abs(area - np.pi * (100 - 81)) < 1.0            # the ring, with its hole kept

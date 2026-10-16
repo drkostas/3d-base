@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `show.sections` draws each cut face from the cut's outline (`show.cut_face`), so a hole in the part stays a hole in the picture. trimesh's own capping came back open on a mesh whose outline carried a zero-area loop and drew a hollow part as a solid disc.
 - `mesh.solid_from_skin(mesh, centre, reach)` makes a hollow part solid by removing its inner surface and closing the skin, so a cavity cut afterwards is the only inside it has. Filling a hollow part by uniting a fill with it leaves air against the inner surface, which a slicer prints as tunnels.
 - `show.sections` needs shapely and whichever triangulator trimesh finds, not mapbox-earcut by name.
 - The skill has a section of trimesh calls that cost a build each to learn: the cut and section functions, batching `contains` and ray queries, `split` on an open mesh, booleans in 32 bits, icospheres sharing directions, revolve profiles, and `centroid`.
