@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The skill says that nothing prints at one line: a thickness that runs down to one line at an edge is changed at the thin end, never offered as a choice.
 - `solid_from_skin` takes the inner surface as the largest connected region of candidate faces by area, not the region of the face nearest the centre, which could be a stray pair of faces.
 
 ## 0.3.0
