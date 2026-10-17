@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- `solid_from_skin` takes a face as hidden only by a face more than `skin` (0.5 mm) nearer the centre along its ray. Nearer than that is a fold or a second copy of the surface, the kind a boolean or a vertex displacement leaves, not a wall: a cap whose seams were pressed in by half a millimetre had folded its inner skin over itself at the front, a patch of the inner surface stayed behind the fold, and the fan from its edge ran as a sheet through the solid.
+
 ## 0.3.2
 
 - `solid_from_skin` takes `keep`, a mask of faces that stay whatever they face: a part the centre sees through the opening, such as the underside of a cap's bill, which faces the centre from outside the shell and was taken for inner surface, with the air under it fanned solid.

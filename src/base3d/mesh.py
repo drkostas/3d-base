@@ -188,7 +188,7 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
             "touches": touches, "loose_mm3": float(loose)}
 
 
-def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None) -> trimesh.Trimesh:
+def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None, skin: float = 0.5) -> trimesh.Trimesh:
     """A hollow part made solid from its outer skin, by removing its inner surface.
 
     The inner surface is the largest connected region, by area, of faces that point toward `centre`
@@ -199,6 +199,11 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None)
     the root of a brim), and each loop is closed with a fan of triangles to `centre`. The result has
     the same outside and no inside, so a cavity cut into it afterwards (a bore for a part it sits on)
     is the only inside it has.
+
+    A face is hidden only by a face more than `skin` nearer the centre along its ray. Nearer than
+    that is a fold or a second copy of the surface, the kind a boolean or a vertex displacement
+    leaves (a cap's seams, pressed in by half a millimetre, folded its inner skin over itself at
+    the front and hid a patch of it), not a wall.
 
     `keep` names faces that stay whatever they face, as a boolean mask over the faces: a part the
     centre sees through the opening, such as the underside of a cap's bill, which faces the centre
@@ -223,7 +228,7 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None)
     if not cand.any():
         raise ValueError("no face points toward the centre")
     which = np.flatnonzero(cand)
-    cand[which[~_seen_from(mesh, centre, which)]] = False
+    cand[which[~_seen_from(mesh, centre, which, skin=skin)]] = False
     if not cand.any():
         raise ValueError("no face that points toward the centre is seen from it")
     adj = np.asarray(mesh.face_adjacency)
@@ -265,8 +270,9 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None)
     return solid
 
 
-def _seen_from(mesh: trimesh.Trimesh, centre, which, cells: int = 64, batch: int = 4_000_000):
-    """Which of the faces `which` a ray from `centre` to their middles meets first.
+def _seen_from(mesh: trimesh.Trimesh, centre, which, cells: int = 64, batch: int = 4_000_000, skin: float = 0.0):
+    """Which of the faces `which` a ray from `centre` to their middles meets first, or within `skin`
+    of first: a face less than that nearer the centre is a fold or a second copy of the surface.
 
     Every ray starts at the one point, so the triangles are binned by their direction from it on a
     cube map (six faces of `cells` by `cells`), and each ray is tested only against the triangles in
@@ -313,7 +319,7 @@ def _seen_from(mesh: trimesh.Trimesh, centre, which, cells: int = 64, batch: int
     for i in range(0, len(pair_ray), batch):
         r, t_idx = pair_ray[i:i + batch], pair_tri[i:i + batch]
         t = _ray_t(mid[r] / dist[r][:, None], tri[t_idx])
-        before = (t < dist[r] - 1e-7) & ~own[i:i + batch]
+        before = (t < dist[r] - max(float(skin), 1e-7)) & ~own[i:i + batch]
         hidden[np.unique(r[before])] = True
     return ~hidden
 
