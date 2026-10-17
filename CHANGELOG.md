@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `solid_from_skin` takes the inner surface as the largest connected region of candidate faces by area, not the region of the face nearest the centre, which could be a stray pair of faces.
+
 ## 0.3.0
 
 - `show.sections` draws each cut face from the cut's outline (`show.cut_face`), so a hole in the part stays a hole in the picture. trimesh's own capping came back open on a mesh whose outline carried a zero-area loop and drew a hollow part as a solid disc.

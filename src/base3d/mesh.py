@@ -191,9 +191,9 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
 def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0.3) -> trimesh.Trimesh:
     """A hollow part made solid from its outer skin, by removing its inner surface.
 
-    The inner surface is taken as the one connected region of faces that point toward `centre`
-    (the cosine of the angle between the face normal and the direction to `centre` is above
-    `lean`), lie within `reach` of it, and are joined to the face nearest to it. Removing them leaves
+    The inner surface is taken as the largest connected region, by area, of faces that point toward
+    `centre` (the cosine of the angle between the face normal and the direction to `centre` is above
+    `lean`) and lie within `reach` of it. Removing them leaves
     the skin open along one or more loops (the inner edge of a rim, the root of a brim), and each
     loop is closed with a fan of triangles to `centre`. The result has the same outside and no inside,
     so a cavity cut into it afterwards (a bore for a part it sits on) is the only inside it has.
@@ -217,8 +217,12 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0
     both = cand[adj[:, 0]] & cand[adj[:, 1]]
     graph = sp.coo_matrix((np.ones(int(both.sum())), (adj[both, 0], adj[both, 1])), shape=(len(c), len(c)))
     _k, label = connected_components(graph, directed=False)
-    seed = int(np.argmin(np.where(cand, dist, np.inf)))
-    inner = cand & (label == label[seed])
+    # the inner surface is the largest connected region of candidates by area: the one nearest the
+    # centre can be a stray pair of faces (a cap's two faces inside its button), and which faces go
+    # must not depend on where the part happens to lie
+    area = np.asarray(mesh.area_faces, float)
+    by_region = np.bincount(label[cand], weights=area[cand], minlength=int(label.max()) + 1)
+    inner = cand & (label == int(np.argmax(by_region)))
     faces = np.asarray(mesh.faces)[~inner]
     skin = trimesh.Trimesh(np.asarray(mesh.vertices, float), faces, process=False)
     edges = np.sort(np.asarray(skin.edges), axis=1)
