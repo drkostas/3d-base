@@ -265,6 +265,11 @@ for s in spots:
   part.stl`) draws three cuts through its centre coloured by wall thickness, with the cut face in
   blue. A ridge, a dip in a floor or a gap that is not where you thought shows there in a minute,
   where a function written against the wrong shape costs a rebuild per guess.
+- Nothing prints at one line. When a part's thickness runs from plenty at one place down to one
+  line at another (the sides of a shell where it sits closest to what it covers, the tips of a
+  clamp cut by parallel planes), the thin end is the design error. Change it, by growing the part
+  until its thinnest wall reaches the bar or by cutting the feature so it ends square, and do not
+  offer "leave it as one line" as a choice. A one-line wall is brittle, whatever the slicer draws.
 - Before thickening anything, find out which side can grow. A shell that sits on another part (a cap
   on a head) can only grow outward where there is no gap under it, and growing outward changes the
   look. Measure the gap first.
