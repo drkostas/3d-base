@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- `solid_from_skin` takes `keep`, a mask of faces that stay whatever they face: a part the centre sees through the opening, such as the underside of a cap's bill, which faces the centre from outside the shell and was taken for inner surface, with the air under it fanned solid.
+- `solid_from_skin` finds what the centre sees by binning the triangles on a cube map of directions from it and testing each ray only against its own cell. Cast through the mesh's own tree, every ray from the middle of a shell was tested against thousands of triangles, and a shell of 70k faces took minutes and more than 8 GB; it now takes a second and under 1 GB.
+
 ## 0.3.1
 
 - `solid_from_skin` takes the inner surface as what a ray from the centre meets first, among the faces that point toward it, and no longer takes `reach`. A brim's top is kept because the shell stands between it and the centre, not because it lies far out. A reach that cut across the inner surface left the part beyond the cut in place under a floor fanned above it, with the shell's own thin wall there, on a cap whose inside sits further from the centre round the ears than at the top.
