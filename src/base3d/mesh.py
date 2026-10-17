@@ -188,7 +188,7 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
             "touches": touches, "loose_mm3": float(loose)}
 
 
-def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3) -> trimesh.Trimesh:
+def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None) -> trimesh.Trimesh:
     """A hollow part made solid from its outer skin, by removing its inner surface.
 
     The inner surface is the largest connected region, by area, of faces that point toward `centre`
@@ -199,6 +199,11 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3) -> trimesh
     the root of a brim), and each loop is closed with a fan of triangles to `centre`. The result has
     the same outside and no inside, so a cavity cut into it afterwards (a bore for a part it sits on)
     is the only inside it has.
+
+    `keep` names faces that stay whatever they face, as a boolean mask over the faces: a part the
+    centre sees through the opening, such as the underside of a cap's bill, which faces the centre
+    from outside the shell and would otherwise be taken for inner surface and have the air under it
+    fanned solid.
 
     This exists because filling a hollow part by uniting a fill with it leaves air wherever the fill
     meets the inner surface at a grazing angle, which a slicer prints as tunnels. With no inner
@@ -213,6 +218,8 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3) -> trimesh
     dist = np.linalg.norm(to_c, axis=1)
     to_c = to_c / np.maximum(dist, 1e-12)[:, None]
     cand = np.einsum("ij,ij->i", n, to_c) > lean
+    if keep is not None:
+        cand &= ~np.asarray(keep, bool)
     if not cand.any():
         raise ValueError("no face points toward the centre")
     which = np.flatnonzero(cand)
@@ -258,20 +265,101 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3) -> trimesh
     return solid
 
 
-def _seen_from(mesh: trimesh.Trimesh, centre, which, batch: int = 2000):
+def _seen_from(mesh: trimesh.Trimesh, centre, which, cells: int = 64, batch: int = 4_000_000):
     """Which of the faces `which` a ray from `centre` to their middles meets first.
 
-    Rays are cast `batch` at a time, which keeps memory flat on large meshes.
+    Every ray starts at the one point, so the triangles are binned by their direction from it on a
+    cube map (six faces of `cells` by `cells`), and each ray is tested only against the triangles in
+    its own cell, `batch` ray-triangle pairs at a time. Cast through the mesh's own tree instead,
+    each ray was tested against every triangle whose box it crossed, thousands for a ray from the
+    middle of a shell, and a shell of 70k faces took minutes and more than 8 GB.
     """
     centre = np.asarray(centre, float)
+    V = np.asarray(mesh.vertices, float) - centre
+    F = np.asarray(mesh.faces)
     which = np.asarray(which, int)
-    c = np.asarray(mesh.triangles_center, float)[which]
-    d = c - centre
-    d /= np.maximum(np.linalg.norm(d, axis=1), 1e-12)[:, None]
-    seen = np.zeros(len(which), bool)
-    for i in range(0, len(which), batch):
-        k = which[i:i + batch]
-        first = mesh.ray.intersects_first(np.repeat(centre[None, :], len(k), axis=0), d[i:i + batch])
-        seen[i:i + batch] = np.asarray(first) == k
-    return seen
+    tri = V[F]                                                        # (n, 3, 3)
+    face_of, u_of, v_of = _cube_cells(tri.reshape(-1, 3), cells)     # per vertex of each triangle
+    face_of, u_of, v_of = (a.reshape(-1, 3) for a in (face_of, u_of, v_of))
+    # a triangle whose three vertices lie on one cube face projects onto that face as the triangle
+    # of their projections, inside the box of their cells; one across an edge of the cube is put
+    # on each face a vertex of it lies on, in a box widened by its own angular size in cells
+    same = (face_of[:, 0] == face_of[:, 1]) & (face_of[:, 0] == face_of[:, 2])
+    entries = []
+    lo_u, hi_u = u_of.min(axis=1), u_of.max(axis=1)
+    lo_v, hi_v = v_of.min(axis=1), v_of.max(axis=1)
+    entries.append(_box_entries(np.flatnonzero(same), face_of[same, 0], lo_u[same], hi_u[same], lo_v[same], hi_v[same], cells))
+    across = np.flatnonzero(~same)
+    if len(across):
+        d = tri[across] / np.maximum(np.linalg.norm(tri[across], axis=2), 1e-12)[:, :, None]
+        cos = np.minimum.reduce([np.einsum("ij,ij->i", d[:, a], d[:, b]) for a, b in ((0, 1), (1, 2), (0, 2))])
+        margin = np.ceil(np.arccos(np.clip(cos, -1, 1)) / (2.0 / cells / 3.0)).astype(int) + 1
+        for k in range(3):
+            entries.append(_box_entries(across, face_of[across, k], u_of[across, k] - margin, u_of[across, k] + margin,
+                                        v_of[across, k] - margin, v_of[across, k] + margin, cells))
+    cell_tri = np.unique(np.vstack(entries), axis=0)                 # (cell, triangle), sorted by cell
+    starts = np.searchsorted(cell_tri[:, 0], np.arange(6 * cells * cells + 1))
+    # the rays: one per face in `which`, to its middle, against the triangles of its cell
+    mid = tri[which].mean(axis=1)
+    dist = np.linalg.norm(mid, axis=1)
+    rf, ru, rv = _cube_cells(mid, cells)
+    rcell = (rf * cells + ru) * cells + rv
+    counts = starts[rcell + 1] - starts[rcell]
+    pair_ray = np.repeat(np.arange(len(which)), counts)
+    offsets = np.repeat(starts[rcell] - np.cumsum(counts) + counts, counts)
+    pair_tri = cell_tri[np.arange(len(pair_ray)) + offsets, 1]
+    own = pair_tri == which[pair_ray]
+    hidden = np.zeros(len(which), bool)
+    for i in range(0, len(pair_ray), batch):
+        r, t_idx = pair_ray[i:i + batch], pair_tri[i:i + batch]
+        t = _ray_t(mid[r] / dist[r][:, None], tri[t_idx])
+        before = (t < dist[r] - 1e-7) & ~own[i:i + batch]
+        hidden[np.unique(r[before])] = True
+    return ~hidden
 
+
+def _cube_cells(d, cells):
+    """The cube-map cell of each direction `d`: the face (0..5, the dominant axis and its sign) and
+    the cell along the other two axes (0..cells-1)."""
+    d = np.asarray(d, float)
+    a = np.abs(d)
+    ax = np.argmax(a, axis=1)
+    idx = np.arange(len(d))
+    m = np.maximum(a[idx, ax], 1e-12)
+    face = ax * 2 + (d[idx, ax] < 0)
+    other = np.array([[1, 2], [0, 2], [0, 1]])[ax]
+    u = np.clip(((d[idx, other[:, 0]] / m + 1.0) / 2.0 * cells).astype(int), 0, cells - 1)
+    v = np.clip(((d[idx, other[:, 1]] / m + 1.0) / 2.0 * cells).astype(int), 0, cells - 1)
+    return face, u, v
+
+
+def _box_entries(tri_idx, face, lo_u, hi_u, lo_v, hi_v, cells):
+    """(cell, triangle) rows for every cell of each triangle's box on its cube face."""
+    lo_u, hi_u = np.clip(lo_u, 0, cells - 1), np.clip(hi_u, 0, cells - 1)
+    lo_v, hi_v = np.clip(lo_v, 0, cells - 1), np.clip(hi_v, 0, cells - 1)
+    nu, nv = hi_u - lo_u + 1, hi_v - lo_v + 1
+    n = nu * nv
+    rep = np.repeat(np.arange(len(tri_idx)), n)
+    k = np.arange(len(rep)) - np.repeat(np.cumsum(n) - n, n)
+    uu = lo_u[rep] + k // nv[rep]
+    vv = lo_v[rep] + k % nv[rep]
+    cell = (face[rep] * cells + uu) * cells + vv
+    return np.c_[cell, tri_idx[rep]]
+
+
+def _ray_t(d, tri):
+    """Where rays from the origin along `d` (m, 3) meet the triangles `tri` (m, 3, 3), as the
+    distance along each ray, infinite where a ray misses its triangle (Moller-Trumbore)."""
+    e1 = tri[:, 1] - tri[:, 0]
+    e2 = tri[:, 2] - tri[:, 0]
+    p = np.cross(d, e2)
+    det = np.einsum("ij,ij->i", e1, p)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    s = -tri[:, 0]
+    u = np.einsum("ij,ij->i", s, p) * inv
+    q = np.cross(s, e1)
+    v = np.einsum("ij,ij->i", d, q) * inv
+    t = np.einsum("ij,ij->i", e2, q) * inv
+    hit = ok & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1.0 + 1e-9) & (t > 1e-9)
+    return np.where(hit, t, np.inf)

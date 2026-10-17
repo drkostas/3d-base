@@ -217,3 +217,45 @@ def test_a_fan_that_is_not_flat_is_wound_with_the_skin():
     assert solid.is_winding_consistent
     want = 2.0 / 3.0 * np.pi * 1000 - np.pi * 81 * 4 / 3.0
     assert abs(solid.volume - want) < 0.03 * want
+
+
+def test_what_the_centre_sees_matches_a_ray_cast_through_the_tree():
+    from base3d.mesh import _seen_from
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.sin(t), 10 * np.cos(t)]
+    brim = np.array([[16.0, 0.0], [16.0, -1.0], [9.0, -1.0]])
+    inner = np.c_[9 * np.sin(t), 9 * np.cos(t)][::-1]
+    dome = _revolved(np.vstack([outer, brim, inner, outer[:1]]), sections=64)
+    dome.apply_transform(trimesh.transformations.rotation_matrix(0.7, [1, 2, 3]))   # off the axes
+    centre = dome.centroid + [0.3, -0.2, 2.0]
+    which = np.arange(len(dome.faces))
+    c = dome.triangles_center
+    d = c - centre
+    d /= np.linalg.norm(d, axis=1)[:, None]
+    first = np.asarray(dome.ray.intersects_first(np.repeat(centre[None, :], len(which), axis=0), d))
+    want = first == which
+    got = _seen_from(dome, centre, which)
+    assert (got == want).all(), f"{int((got != want).sum())} faces differ of {len(which)}"
+    assert 0 < got.sum() < len(which)
+
+
+def test_a_bill_seen_through_the_opening_is_kept_when_named():
+    from base3d.mesh import solid_from_skin
+    # a dome with a flat bill out to 20 mm, made solid about a centre 8 mm below the rim: the bill's
+    # underside faces that centre and is seen from it through the opening, so without being told the
+    # fill takes it for inner surface and fans the air under the bill solid
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.sin(t), 10 * np.cos(t)]
+    bill = np.array([[20.0, 0.0], [20.0, -1.0], [9.0, -1.0]])
+    inner = np.c_[9 * np.sin(t), 9 * np.cos(t)][::-1]
+    dome = _revolved(np.vstack([outer, bill, inner, outer[:1]]), sections=64)
+    under = np.array([[15.0, 0.0, -2.0]])
+    c, n = dome.triangles_center, dome.face_normals
+    underside = (np.abs(c[:, 2] + 1.0) < 1e-6) & (np.linalg.norm(c[:, :2], axis=1) > 9.5) & (n[:, 2] < -0.9)
+    assert underside.sum() > 0
+    blind = solid_from_skin(dome, centre=(0, 0, -8))
+    assert blind.contains(under)[0], "the air under the bill was not filled, so the test proves nothing"
+    told = solid_from_skin(dome, centre=(0, 0, -8), keep=underside)
+    assert told.is_watertight and told.is_winding_consistent and told.euler_number == 2
+    assert not told.contains(under)[0]
+    assert abs(told.bounds[1][0] - 20.0) < 1e-6

@@ -338,7 +338,8 @@ fixed each.
   lie against. Three fills on one cap each left tunnels; the skin made solid left none. The inner
   surface is what a ray from the centre meets first: do not cut it off at a distance from the
   centre, because the part beyond the cut stays, with the shell's own thin wall, under a floor
-  fanned above it (a cap's sides round the ears read 0.46 mm that way).
+  fanned above it (a cap's sides round the ears read 0.46 mm that way). Name with `keep` the faces
+  the centre sees through the opening (a bill's underside), or the air under them is fanned solid.
 
 ## trimesh calls that cost a build each to learn
 
