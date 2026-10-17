@@ -259,3 +259,29 @@ def test_a_bill_seen_through_the_opening_is_kept_when_named():
     assert told.is_watertight and told.is_winding_consistent and told.euler_number == 2
     assert not told.contains(under)[0]
     assert abs(told.bounds[1][0] - 20.0) < 1e-6
+
+
+def test_a_sliver_just_inside_the_inner_surface_neither_hides_it_nor_stays():
+    from base3d.mesh import solid_from_skin
+    # a dome shell with a closed sliver, 0.2 mm thick, lying 0.05 mm under the top of its inner
+    # surface: the kind of second copy a boolean or a vertex displacement leaves. Its far side faces
+    # outward and stands in front of the dome's top as seen from the centre
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.sin(t), 10 * np.cos(t)]
+    inner = np.c_[9 * np.sin(t), 9 * np.cos(t)][::-1]
+    dome = _revolved(np.vstack([outer, inner, outer[:1]]), sections=64)
+    sliver = trimesh.creation.box(extents=(2.0, 2.0, 0.2))
+    sliver.apply_translation([0, 0, 9.0 - 0.05 - 0.1])
+    both = trimesh.util.concatenate([dome, sliver])
+    # the dome's faces keep their indices in the joined mesh; the top of its inner surface lies in
+    # the sliver's shadow, hidden by 0.05 mm with no skin and seen through it with the default
+    from base3d.mesh import _seen_from
+    c = dome.triangles_center
+    top = np.flatnonzero((c[:, 2] > 8.5) & (c[:, 2] < 9.2) & (np.linalg.norm(c[:, :2], axis=1) < 0.6))
+    assert len(top) > 0
+    assert not _seen_from(both, (0, 0, 0), top, skin=0.0).any()
+    assert _seen_from(both, (0, 0, 0), top, skin=0.5).all()
+    solid = solid_from_skin(both, centre=(0, 0, 0))
+    assert solid.is_watertight and solid.is_winding_consistent and solid.euler_number == 2
+    assert solid.contains([[0.0, 0.0, 8.9], [0.0, 0.0, 5.0]]).all()       # the top is solid through
+    assert abs(solid.volume - 2.0 / 3.0 * np.pi * 1000) < 0.03 * 2094
