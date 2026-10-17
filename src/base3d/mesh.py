@@ -188,15 +188,17 @@ def as_written(mesh: trimesh.Trimesh, file_type: str = "stl", loose_mm3: float =
             "touches": touches, "loose_mm3": float(loose)}
 
 
-def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0.3) -> trimesh.Trimesh:
+def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3) -> trimesh.Trimesh:
     """A hollow part made solid from its outer skin, by removing its inner surface.
 
-    The inner surface is taken as the largest connected region, by area, of faces that point toward
-    `centre` (the cosine of the angle between the face normal and the direction to `centre` is above
-    `lean`) and lie within `reach` of it. Removing them leaves
-    the skin open along one or more loops (the inner edge of a rim, the root of a brim), and each
-    loop is closed with a fan of triangles to `centre`. The result has the same outside and no inside,
-    so a cavity cut into it afterwards (a bore for a part it sits on) is the only inside it has.
+    The inner surface is the largest connected region, by area, of faces that point toward `centre`
+    (the cosine of the angle between the face normal and the direction to `centre` is above `lean`)
+    and are seen from it: a ray from `centre` to the face's middle meets that face first. A face
+    behind a wall (the top of a brim, as seen through the shell) is kept whichever way it faces.
+    Removing the inner surface leaves the skin open along one or more loops (the inner edge of a rim,
+    the root of a brim), and each loop is closed with a fan of triangles to `centre`. The result has
+    the same outside and no inside, so a cavity cut into it afterwards (a bore for a part it sits on)
+    is the only inside it has.
 
     This exists because filling a hollow part by uniting a fill with it leaves air wherever the fill
     meets the inner surface at a grazing angle, which a slicer prints as tunnels. With no inner
@@ -210,9 +212,13 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0
     to_c = centre - c
     dist = np.linalg.norm(to_c, axis=1)
     to_c = to_c / np.maximum(dist, 1e-12)[:, None]
-    cand = (dist < float(reach)) & (np.einsum("ij,ij->i", n, to_c) > lean)
+    cand = np.einsum("ij,ij->i", n, to_c) > lean
     if not cand.any():
-        raise ValueError("no face points toward the centre within reach")
+        raise ValueError("no face points toward the centre")
+    which = np.flatnonzero(cand)
+    cand[which[~_seen_from(mesh, centre, which)]] = False
+    if not cand.any():
+        raise ValueError("no face that points toward the centre is seen from it")
     adj = np.asarray(mesh.face_adjacency)
     both = cand[adj[:, 0]] & cand[adj[:, 1]]
     graph = sp.coo_matrix((np.ones(int(both.sum())), (adj[both, 0], adj[both, 1])), shape=(len(c), len(c)))
@@ -223,40 +229,49 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, reach: float, lean: float = 0
     area = np.asarray(mesh.area_faces, float)
     by_region = np.bincount(label[cand], weights=area[cand], minlength=int(label.max()) + 1)
     inner = cand & (label == int(np.argmax(by_region)))
-    faces = np.asarray(mesh.faces)[~inner]
+    # what stays is the one connected skin round the inner surface; an island of faces inside it that
+    # the centre cannot see (the side of a groove hidden by its lip) would be fanned into a sealed
+    # pocket, so it goes with the inner surface
+    kept = ~inner
+    both = kept[adj[:, 0]] & kept[adj[:, 1]]
+    graph = sp.coo_matrix((np.ones(int(both.sum())), (adj[both, 0], adj[both, 1])), shape=(len(c), len(c)))
+    _k, label = connected_components(graph, directed=False)
+    by_region = np.bincount(label[kept], weights=area[kept], minlength=int(label.max()) + 1)
+    kept &= label == int(np.argmax(by_region))
+    faces = np.asarray(mesh.faces)[kept]
     skin = trimesh.Trimesh(np.asarray(mesh.vertices, float), faces, process=False)
-    edges = np.sort(np.asarray(skin.edges), axis=1)
-    uniq, count = np.unique(edges, axis=0, return_counts=True)
-    rim = uniq[count == 1]
+    # the skin's boundary edges, each in the winding of the face it belongs to, so the fan triangle
+    # across it runs the edge the other way and is wound with the skin. Chaining the edges into loops
+    # after sorting them lost that direction, and a fan that is not flat then faced the wrong way.
+    directed = np.asarray(skin.edges)
+    _u, inverse, count = np.unique(np.sort(directed, axis=1), axis=0, return_inverse=True, return_counts=True)
+    boundary = directed[count[np.asarray(inverse).reshape(-1)] == 1]
     V = np.vstack([skin.vertices, centre[None, :]])
     apex = len(V) - 1
-    fan = [[a, b, apex] for loop in _loops(rim) for a, b in zip(loop, loop[1:] + loop[:1])]
-    solid = trimesh.Trimesh(V, np.vstack([faces, np.asarray(fan, int).reshape(-1, 3)]), process=False)
+    fan = np.c_[boundary[:, 1], boundary[:, 0], np.full(len(boundary), apex)]
+    solid = trimesh.Trimesh(V, np.vstack([faces, fan.reshape(-1, 3)]), process=False)
     solid.merge_vertices()
-    if not solid.is_watertight:
+    if not solid.is_watertight or not solid.is_winding_consistent:
         raise ValueError("the skin could not be closed")
     if solid.volume < 0:
         solid.invert()
     return solid
 
 
-def _loops(edges):
-    """Closed loops in a set of boundary edges, as vertex lists."""
-    nxt = {}
-    for a, b in np.asarray(edges).tolist():
-        nxt.setdefault(a, []).append(b)
-        nxt.setdefault(b, []).append(a)
-    seen, loops = set(), []
-    for start in nxt:
-        if start in seen:
-            continue
-        loop, prev, cur = [start], None, start
-        while True:
-            seen.add(cur)
-            after = [v for v in nxt[cur] if v != prev and v not in seen]
-            if not after:
-                break
-            prev, cur = cur, after[0]
-            loop.append(cur)
-        loops.append(loop)
-    return loops
+def _seen_from(mesh: trimesh.Trimesh, centre, which, batch: int = 2000):
+    """Which of the faces `which` a ray from `centre` to their middles meets first.
+
+    Rays are cast `batch` at a time, which keeps memory flat on large meshes.
+    """
+    centre = np.asarray(centre, float)
+    which = np.asarray(which, int)
+    c = np.asarray(mesh.triangles_center, float)[which]
+    d = c - centre
+    d /= np.maximum(np.linalg.norm(d, axis=1), 1e-12)[:, None]
+    seen = np.zeros(len(which), bool)
+    for i in range(0, len(which), batch):
+        k = which[i:i + batch]
+        first = mesh.ray.intersects_first(np.repeat(centre[None, :], len(k), axis=0), d[i:i + batch])
+        seen[i:i + batch] = np.asarray(first) == k
+    return seen
+
