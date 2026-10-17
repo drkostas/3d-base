@@ -147,7 +147,73 @@ def test_a_hollow_dome_becomes_a_solid_one_from_its_skin():
     if dome.volume < 0:
         dome.invert()
     assert dome.is_watertight
-    solid = solid_from_skin(dome, centre=(0, 0, 0), reach=9.5)
+    solid = solid_from_skin(dome, centre=(0, 0, 0))
     assert solid.is_watertight and solid.euler_number == 2
     assert abs(solid.volume - 2.0 / 3.0 * np.pi * 1000) < 0.03 * 2094   # a solid half ball
     assert abs(solid.bounds[1][2] - 10.0) < 1e-6                        # the outside is kept
+
+
+def _bell_profiles():
+    """A bell: 1 mm thick at the top, flaring to a 0.4 mm wall at the rim, open at the bottom, with
+    its inner surface at the flare further from the centre than at the top, as a cap's is round the
+    ears. (outer from the top down to the rim, inner from the rim back up to the top), in (r, z)."""
+    t = np.linspace(0, np.pi / 2, 48)
+    flare = np.sin(t) ** 4
+    outer = np.c_[(10 + 3.0 * flare) * np.sin(t), (10 + 3.0 * flare) * np.cos(t)]
+    inner = np.c_[(9 + 3.6 * flare) * np.sin(t), (9 + 3.6 * flare) * np.cos(t)][::-1]
+    return outer, inner
+
+
+def _revolved(profile, sections=96):
+    part = trimesh.creation.revolve(profile, sections=sections)
+    if part.volume < 0:
+        part.invert()
+    assert part.is_watertight
+    return part
+
+
+def test_the_whole_inner_surface_goes_where_it_flares_out_and_the_thin_wall_with_it():
+    from base3d.mesh import solid_from_skin
+    from base3d.thickness import thin_spots
+    outer, inner = _bell_profiles()
+    bell = _revolved(np.vstack([outer, inner, outer[:1]]))
+    solid = solid_from_skin(bell, centre=(0, 0, 0))
+    assert solid.is_watertight and solid.is_winding_consistent and solid.euler_number == 2
+    thin = [s for s in thin_spots(solid, 0.8) if s["points"] >= 8]
+    assert thin == [], "the 0.4 mm wall at the flare is still there"
+    full = _revolved(np.vstack([outer, [[0.0, 0.0]], outer[:1]]))      # a solid bell
+    assert abs(solid.volume - full.volume) < 0.03 * full.volume
+
+
+def test_a_face_behind_a_wall_is_not_part_of_the_inner_surface():
+    from base3d.mesh import solid_from_skin
+    from base3d.thickness import thin_spots
+    # a dome shell with a brim: seen from a centre 5 mm up, the brim's top faces the centre, but the
+    # dome's wall stands between
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.sin(t), 10 * np.cos(t)]                    # top to the rim at (10, 0)
+    brim = np.array([[16.0, 0.0], [16.0, -1.0], [9.0, -1.0]])      # out along the rim, under, back in
+    inner = np.c_[9 * np.sin(t), 9 * np.cos(t)][::-1]               # rim back up to the top
+    dome = _revolved(np.vstack([outer, brim, inner, outer[:1]]), sections=64)
+    solid = solid_from_skin(dome, centre=(0, 0, 5))
+    assert solid.is_watertight and solid.is_winding_consistent and solid.euler_number == 2
+    assert [s for s in thin_spots(solid, 0.8) if s["points"] >= 8] == []
+    assert abs(solid.bounds[1][0] - 16.0) < 1e-6                     # the brim is still there
+    # the same solid drawn as one profile: the dome, the brim, and the fan from the brim's inner
+    # edge under the rim up to the centre (the brim's inner side faces the centre and is seen)
+    want = _revolved(np.vstack([outer, brim, [[0.0, 5.0]], outer[:1]]), sections=64)
+    assert abs(solid.volume - want.volume) < 0.03 * want.volume
+
+
+def test_a_fan_that_is_not_flat_is_wound_with_the_skin():
+    from base3d.mesh import solid_from_skin
+    # a dome shell made solid about a centre above its rim: the fan is a cone, and the solid's volume
+    # is the half ball less that cone only when the cone faces the right way
+    t = np.linspace(0, np.pi / 2, 24)
+    outer = np.c_[10 * np.sin(t), 10 * np.cos(t)]
+    inner = np.c_[9 * np.sin(t), 9 * np.cos(t)][::-1]
+    dome = _revolved(np.vstack([outer, inner, outer[:1]]), sections=64)
+    solid = solid_from_skin(dome, centre=(0, 0, 4))
+    assert solid.is_winding_consistent
+    want = 2.0 / 3.0 * np.pi * 1000 - np.pi * 81 * 4 / 3.0
+    assert abs(solid.volume - want) < 0.03 * want

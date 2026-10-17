@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
+- `solid_from_skin` takes the inner surface as what a ray from the centre meets first, among the faces that point toward it, and no longer takes `reach`. A brim's top is kept because the shell stands between it and the centre, not because it lies far out. A reach that cut across the inner surface left the part beyond the cut in place under a floor fanned above it, with the shell's own thin wall there, on a cap whose inside sits further from the centre round the ears than at the top.
+- `solid_from_skin` winds the fan with the skin: each fan triangle runs its boundary edge the other way from the face that owns it. The edges were sorted before they were chained into loops, which lost their direction, so any fan that was not flat faced the wrong way, and the solid read with the wrong volume and could not be cut cleanly.
+- `solid_from_skin` removes, with the inner surface, any island of faces inside it that the centre cannot see (the side of a groove hidden by its lip); fanned on its own, an island would have become a sealed pocket.
 - The skill says that nothing prints at one line: a thickness that runs down to one line at an edge is changed at the thin end, never offered as a choice.
 - `solid_from_skin` takes the inner surface as the largest connected region of candidate faces by area, not the region of the face nearest the centre, which could be a stray pair of faces.
 
