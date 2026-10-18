@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- `mesh.remanifold(mesh)` rebuilds a mesh as one simple solid on a voxel grid, to shed the seam tunnels and near-coincident-sheet slivers a boolean leaves: a watertight mesh with a handle (its Euler number is not 2), or a wall thinner than any line where two surfaces meet at a grazing angle, which a slicer cannot print. The mesh is turned into filled voxels, a closing pass fills the sub-pitch tunnels and the thin grooves a surface would read as handles, the surface is taken from the voxels and smoothed, and it is decimated first so voxelising a high-resolution mesh stays cheap. A hole wider than the grid pitch is kept. Needs `scipy`, `scikit-image` and `fast-simplification`.
+
 ## 0.3.3
 
 - `solid_from_skin` takes a face as hidden only by a face more than `skin` (0.5 mm) nearer the centre along its ray. Nearer than that is a fold or a second copy of the surface, the kind a boolean or a vertex displacement leaves, not a wall: a cap whose seams were pressed in by half a millimetre had folded its inner skin over itself at the front, a patch of the inner surface stayed behind the fold, and the fan from its edge ran as a sheet through the solid.
