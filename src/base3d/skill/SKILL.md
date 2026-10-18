@@ -343,6 +343,9 @@ fixed each.
 
 ## trimesh calls that cost a build each to learn
 
+- `mesh.remanifold(mesh)` rebuilds a mesh as one simple solid on a voxel grid, to shed the seam
+  tunnels and near-coincident-sheet slivers a boolean leaves (a handle, or a wall thinner than any
+  line where two surfaces graze). A hole wider than the pitch is kept; re-cut a bore or a slot after.
 - A cut half is `trimesh.intersections.slice_mesh_plane(mesh, plane_normal, plane_origin, cap=True)`
   (there is no `slice_plane`), and capping needs shapely and mapbox-earcut. A cut outline is
   `mesh.section(plane_origin=, plane_normal=)`, then `.to_planar()` for 2D polygons.

@@ -285,3 +285,23 @@ def test_a_sliver_just_inside_the_inner_surface_neither_hides_it_nor_stays():
     assert solid.is_watertight and solid.is_winding_consistent and solid.euler_number == 2
     assert solid.contains([[0.0, 0.0, 8.9], [0.0, 0.0, 5.0]]).all()       # the top is solid through
     assert abs(solid.volume - 2.0 / 3.0 * np.pi * 1000) < 0.03 * 2094
+
+
+def test_remanifold_closes_a_sub_pitch_tunnel_to_a_simple_solid():
+    from base3d.mesh import remanifold
+    box = trimesh.creation.box([10, 10, 4])
+    tunnel = trimesh.creation.box([0.3, 0.3, 10])          # a 0.3 mm tunnel bored through the block
+    holed = trimesh.boolean.difference([box, tunnel])
+    assert holed.euler_number == 0                          # genus 1: a handle, not a simple solid
+    fixed = remanifold(holed, pitch=0.6, close=1, smooth=0)
+    assert fixed.is_watertight and fixed.euler_number == 2  # the sub-pitch tunnel is gone
+    assert abs(fixed.volume - box.volume) < 0.15 * box.volume   # voxelising inflates the surface a little
+
+
+def test_remanifold_keeps_a_hole_wider_than_the_pitch():
+    from base3d.mesh import remanifold
+    box = trimesh.creation.box([12, 12, 4])
+    wide = trimesh.creation.box([3, 3, 10])                 # a 3 mm hole, far wider than the pitch
+    frame = trimesh.boolean.difference([box, wide])
+    kept = remanifold(frame, pitch=0.6, close=1, smooth=0)
+    assert kept.is_watertight and kept.euler_number == 0    # the real hole is still a hole

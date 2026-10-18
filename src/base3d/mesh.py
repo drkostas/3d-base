@@ -270,6 +270,47 @@ def solid_from_skin(mesh: trimesh.Trimesh, centre, lean: float = 0.3, keep=None,
     return solid
 
 
+def remanifold(mesh: trimesh.Trimesh, pitch: float = 0.3, close: int = 1, smooth: int = 25,
+               decimate_to: int = 25000) -> trimesh.Trimesh:
+    """A mesh rebuilt as one simple solid on a voxel grid.
+
+    A boolean operation can leave a mesh that is watertight but not a simple solid: a tunnel through a
+    seam where two parts join (a handle, so the Euler number is not 2), or a near-coincident sheet
+    where two surfaces meet at a grazing angle, which a thickness measure reads as a wall thinner than
+    any line and a slicer cannot print. This turns the mesh into filled voxels of side `pitch`, which
+    cannot carry a tunnel or a gap thinner than `pitch`; `close` passes of a morphological closing
+    fill the sub-pitch tunnels and the thin grooves a surface would otherwise read as handles; the
+    surface is taken from the voxels and, because it comes out stepped, smoothed with `smooth` Taubin
+    iterations, which keep the volume and the topology. The mesh is decimated to about `decimate_to`
+    faces first, because voxelising a high-resolution mesh is the memory cost and the grid resamples
+    the surface anyway. The result is one watertight simple solid; a crisp cut such as a bore or a
+    slot is re-cut by the caller afterwards, since the grid fills a gap thinner than its pitch.
+
+    A hole wider than `pitch` is kept, so a part that is meant to have a hole stays as it is; only the
+    tunnels and gaps narrower than the grid go. Needs `scipy` and `fast-simplification`.
+    """
+    from trimesh.voxel import ops as _vops
+    from scipy import ndimage as _nd
+    if decimate_to and len(mesh.faces) > decimate_to:
+        try:
+            mesh = mesh.simplify_quadric_decimation(percent=float(decimate_to) / len(mesh.faces))
+        except Exception:
+            pass
+    vg = mesh.voxelized(float(pitch)).fill()
+    mat = np.asarray(vg.matrix)
+    if close:
+        pad = int(close) + 1
+        mat = _nd.binary_closing(np.pad(mat, pad), iterations=int(close))[pad:-pad, pad:-pad, pad:-pad]
+    out = _vops.matrix_to_marching_cubes(mat)
+    out.apply_transform(vg.transform)
+    out.merge_vertices()
+    out = max(out.split(only_watertight=False), key=lambda b: abs(b.volume))
+    out.fix_normals()
+    if smooth:
+        trimesh.smoothing.filter_taubin(out, iterations=int(smooth))
+    return out
+
+
 def _seen_from(mesh: trimesh.Trimesh, centre, which, cells: int = 64, batch: int = 4_000_000, skin: float = 0.0):
     """Which of the faces `which` a ray from `centre` to their middles meets first, or within `skin`
     of first: a face less than that nearer the centre is a fold or a second copy of the surface.
