@@ -287,7 +287,7 @@ def remanifold(mesh: trimesh.Trimesh, pitch: float = 0.3, close: int = 1, smooth
     slot is re-cut by the caller afterwards, since the grid fills a gap thinner than its pitch.
 
     A hole wider than `pitch` is kept, so a part that is meant to have a hole stays as it is; only the
-    tunnels and gaps narrower than the grid go. Needs `scipy` and `fast-simplification`.
+    tunnels and gaps narrower than the grid go. Needs `scipy`, `scikit-image` and `fast-simplification`.
     """
     from trimesh.voxel import ops as _vops
     from scipy import ndimage as _nd

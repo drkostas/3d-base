@@ -2,7 +2,7 @@
 
 ## 0.4.0
 
-- `mesh.remanifold(mesh)` rebuilds a mesh as one simple solid on a voxel grid, to shed the seam tunnels and near-coincident-sheet slivers a boolean leaves: a watertight mesh with a handle (its Euler number is not 2), or a wall thinner than any line where two surfaces meet at a grazing angle, which a slicer cannot print. The mesh is turned into filled voxels, a closing pass fills the sub-pitch tunnels and the thin grooves a surface would read as handles, the surface is taken from the voxels and smoothed, and it is decimated first so voxelising a high-resolution mesh stays cheap. A hole wider than the grid pitch is kept. Needs `scipy` and `fast-simplification`.
+- `mesh.remanifold(mesh)` rebuilds a mesh as one simple solid on a voxel grid, to shed the seam tunnels and near-coincident-sheet slivers a boolean leaves: a watertight mesh with a handle (its Euler number is not 2), or a wall thinner than any line where two surfaces meet at a grazing angle, which a slicer cannot print. The mesh is turned into filled voxels, a closing pass fills the sub-pitch tunnels and the thin grooves a surface would read as handles, the surface is taken from the voxels and smoothed, and it is decimated first so voxelising a high-resolution mesh stays cheap. A hole wider than the grid pitch is kept. Needs `scipy`, `scikit-image` and `fast-simplification`.
 
 ## 0.3.3
 
