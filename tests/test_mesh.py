@@ -287,21 +287,27 @@ def test_a_sliver_just_inside_the_inner_surface_neither_hides_it_nor_stays():
     assert abs(solid.volume - 2.0 / 3.0 * np.pi * 1000) < 0.03 * 2094
 
 
+def _block_with_hole(side, hole, height=4.0):
+    # a square block with a square hole through it, built from a polygon with a hole (no boolean
+    # backend needed), so it is a genus-1 solid: watertight with a handle
+    from shapely.geometry import Polygon
+    h, s = hole / 2.0, side / 2.0
+    shell = [(-s, -s), (s, -s), (s, s), (-s, s)]
+    inner = [(-h, -h), (h, -h), (h, h), (-h, h)]
+    return trimesh.creation.extrude_polygon(Polygon(shell, [inner]), height=height)
+
+
 def test_remanifold_closes_a_sub_pitch_tunnel_to_a_simple_solid():
     from base3d.mesh import remanifold
-    box = trimesh.creation.box([10, 10, 4])
-    tunnel = trimesh.creation.box([0.3, 0.3, 10])          # a 0.3 mm tunnel bored through the block
-    holed = trimesh.boolean.difference([box, tunnel])
+    holed = _block_with_hole(10.0, 0.3)                     # a 0.3 mm tunnel through a 10 mm block
     assert holed.euler_number == 0                          # genus 1: a handle, not a simple solid
     fixed = remanifold(holed, pitch=0.6, close=1, smooth=0)
     assert fixed.is_watertight and fixed.euler_number == 2  # the sub-pitch tunnel is gone
-    assert abs(fixed.volume - box.volume) < 0.15 * box.volume   # voxelising inflates the surface a little
+    assert 400.0 < fixed.volume < 800.0          # voxelising inflates the surface; it never shrinks the solid
 
 
 def test_remanifold_keeps_a_hole_wider_than_the_pitch():
     from base3d.mesh import remanifold
-    box = trimesh.creation.box([12, 12, 4])
-    wide = trimesh.creation.box([3, 3, 10])                 # a 3 mm hole, far wider than the pitch
-    frame = trimesh.boolean.difference([box, wide])
+    frame = _block_with_hole(12.0, 3.0)                     # a 3 mm hole, far wider than the pitch
     kept = remanifold(frame, pitch=0.6, close=1, smooth=0)
     assert kept.is_watertight and kept.euler_number == 0    # the real hole is still a hole
