@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- `base3d.Nozzle(diameter, layer)` holds the nozzle a part is printed with and gives its smallest sizes as counts of lines and layers: `wall` (two lines), `plate` (two layers), `lines(n)`, `layers(n)` and `line_width` (a slicer's default line, 1.05 times the diameter). `thickness.print_thin_spots` takes `nozzle=` for both bars, `LINE_MM` and `LAYER_MM` are the default nozzle's, and `3d-base thickness --printed --nozzle D --layer H` checks for another nozzle.
+- `base3d.__version__` reads 0.5.0. It had stayed at 0.2.0 since that release, so `3d-base --version` named the wrong version.
+
 ## 0.4.0
 
 - `mesh.remanifold(mesh)` rebuilds a mesh as one simple solid on a voxel grid, to shed the seam tunnels and near-coincident-sheet slivers a boolean leaves: a watertight mesh with a handle (its Euler number is not 2), or a wall thinner than any line where two surfaces meet at a grazing angle, which a slicer cannot print. The mesh is turned into filled voxels, a closing pass fills the sub-pitch tunnels and the thin grooves a surface would read as handles, the surface is taken from the voxels and smoothed, and it is decimated first so voxelising a high-resolution mesh stays cheap. A hole wider than the grid pitch is kept. Needs `scipy`, `scikit-image` and `fast-simplification`.

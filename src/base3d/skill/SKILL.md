@@ -248,6 +248,7 @@ watertight check says so. Measure it, and measure it the way the part will lie o
 from base3d import thickness as T
 spots = T.thin_spots(mesh, bar_mm=0.8)                    # the places under 0.8 mm, grouped
 spots = T.print_thin_spots(placed, backed_mm=1.0)         # as it lies, +z up, ridges left out
+spots = T.print_thin_spots(placed, nozzle=Nozzle(0.2, layer=0.1))  # the bars of a 0.2 mm nozzle
 for s in spots:
     print(s["short_of"], s["typical_width_mm"], s["size_mm"], s["points"])
 ```
@@ -255,6 +256,10 @@ for s in spots:
 - Read `typical_mm` and `size_mm` before `mm`. Material really is thin next to a sharp edge, so a
   place of a few points with a low `mm` is an edge, which printing rounds off. A wall that will fail
   is large and thin throughout.
+- Write the smallest sizes of a design against a `base3d.Nozzle` (`n.wall` is two lines, `n.plate`
+  two layers, `n.lines(k)` and `n.layers(k)` any count), and check with the same nozzle, so the design
+  and its check follow the nozzle it is printed with. `3d-base thickness part.stl --printed --nozzle 0.2
+  --layer 0.1` checks for a finer nozzle.
 - Judge the part as it lies. An upright wall needs two lines across a layer (0.8 mm at a 0.4 mm
   nozzle) and a flat plate needs two layers (0.4 mm at 0.2 mm layers). A 0.45 mm brim fails stood on
   its edge and passes lying flat, so `thin_spots` on the part as modelled cannot tell you.

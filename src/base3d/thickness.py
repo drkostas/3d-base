@@ -20,6 +20,7 @@ import numpy as np
 import trimesh
 
 from .mesh import SAMPLE_SEED
+from .nozzle import DEFAULT, Nozzle
 
 #: how far inside the surface each ray starts, so it does not hit the face it starts on
 START_MM = 1e-3
@@ -130,14 +131,18 @@ def _backed(mesh, pts, normals, mm, which, backed_mm, batch=2000):
 
 
 #: a wall inside one layer needs two lines of a 0.4 mm nozzle, and a plate lying flat two 0.2 mm layers
-LINE_MM = 0.8
-LAYER_MM = 0.4
+LINE_MM = DEFAULT.wall
+LAYER_MM = DEFAULT.plate
 
 
 def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: float = LAYER_MM,
                      up=(0.0, 0.0, 1.0), n: int = 4000, seed: int = SAMPLE_SEED,
-                     group_mm: float = 1.5, backed_mm: float | None = None) -> list[dict]:
+                     group_mm: float = 1.5, backed_mm: float | None = None,
+                     nozzle: Nozzle | None = None) -> list[dict]:
     """The places too thin to print, for the part as it lies on the plate, thinnest first.
+
+    `nozzle` sets both bars from the nozzle the part is printed with (its `wall` and `plate`), in
+    place of `line_mm` and `layer_mm`.
 
     A slicer cuts the part into layers across `up`, and how much a wall gets depends on which way it
     faces. A wall standing upright is drawn with lines inside each layer, and needs `line_mm` across
@@ -157,6 +162,8 @@ def print_thin_spots(mesh: trimesh.Trimesh, line_mm: float = LINE_MM, layer_mm: 
     after leaving it is taken as detail of that kind and left out. A free wall (a shell, a fin, a
     plate) has open space behind it and stays in.
     """
+    if nozzle is not None:
+        line_mm, layer_mm = nozzle.wall, nozzle.plate
     up = np.asarray(up, float)
     up = up / float(np.linalg.norm(up))
     pts, normals, mm = wall_thickness(mesh, n=n, seed=seed)
