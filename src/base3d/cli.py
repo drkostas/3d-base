@@ -37,6 +37,8 @@ def main(argv=None) -> int:
     t.add_argument("-n", type=int, default=4000, help="sample points on the surface (default 4000)")
     t.add_argument("--printed", action="store_true",
                    help="judge each wall as the part lies, +z up: two lines across a layer, two layers through a flat plate")
+    t.add_argument("--nozzle", type=float, help="the nozzle's diameter in mm; the bar becomes two of its lines")
+    t.add_argument("--layer", type=float, default=0.2, help="the layer height in mm, with --nozzle (default 0.2)")
 
     so = sub.add_parser("sound", help="whether a part is sound to print, and every reason it is not")
     so.add_argument("mesh")
@@ -71,11 +73,15 @@ def main(argv=None) -> int:
         print(json.dumps(rep, indent=1))
         return 1 if rep["faults"] else 0
     if a.cmd == "thickness":
+        from .nozzle import Nozzle
         from .thickness import print_thin_spots, thin_spots, wall_thickness
+        noz = Nozzle(a.nozzle, a.layer) if a.nozzle else None
+        if noz is not None:
+            a.bar = noz.wall
         m, _ = load_clean(a.mesh)
         _pts, _nrm, mm = wall_thickness(m, n=a.n)
         finite = [float(x) for x in mm if x != float("inf")]
-        spots = print_thin_spots(m, line_mm=a.bar, n=a.n) if a.printed else thin_spots(m, a.bar, n=a.n)
+        spots = print_thin_spots(m, line_mm=a.bar, n=a.n, nozzle=noz) if a.printed else thin_spots(m, a.bar, n=a.n)
         print(json.dumps({"thinnest_mm": min(finite) if finite else None, "bar_mm": a.bar,
                           "thin_spots": spots}, indent=1))
         return 1 if spots else 0
