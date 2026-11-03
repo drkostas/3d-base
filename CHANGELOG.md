@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+- **`base3d.__version__` can no longer fall behind the release.** It was written by hand beside the version in pyproject.toml, and the two had drifted apart before (it said 0.2.0 until 0.5.0). `__version__` now reads the version from the installed package's metadata with `importlib.metadata`, so pyproject.toml is the only place the version is written. A source tree that was never installed reads `0+unknown`. An editable install keeps the version it had when it was installed, so run `pip install -e .` again after changing the version. A new test checks that `__version__` matches pyproject.toml.
+
 ## 0.6.0
 
 - `render` can fill the triangles on the GPU. Install `3d-base[gpu]` (moderngl), and `render`, `sheet` and `sections` draw on the GPU whenever an OpenGL context opens, and on the CPU as before when moderngl is missing or no context opens (a CI runner with no GPU, for one). The projection, the crease-aware corner normals, the light and the colours are still worked out on the CPU, so the two paths give the same picture. Over the tests (a sphere, a box with sharp edges and two coloured parts passing through each other, from four views each) the mean difference is at most 0.002 levels of 255, a pixel off by more than one level is rare (a few along an outline that passes exactly through a pixel centre), and the outlines overlap with an IoU of at least 0.9999.
