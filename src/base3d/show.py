@@ -11,7 +11,9 @@ smooth surfaces, described at CREASE_DEG).
 """
 from __future__ import annotations
 
+import os
 import struct
+import threading
 import zlib
 
 import numpy as np
@@ -144,7 +146,7 @@ def corner_normals(mesh, crease_deg=CREASE_DEG, naive=False):
 
 def render(mesh, eye, target, size=(1400, 1000), fov=26.0, up=(0, 0, 1),
            light=(0.4, -0.7, 0.75), base=(0.94, 0.94, 0.91), bg=(1.0, 1.0, 1.0),
-           face_colors=None, ao=0.35, headlight=None, naive_normals=False):
+           face_colors=None, ao=0.35, headlight=None, naive_normals=False, backend=None):
     """Render one mesh with a depth buffer and return an RGB image (H, W, 3) of uint8.
 
     The light is a fixed key light, a soft light from the sky (+Z), and a headlight from the
@@ -154,8 +156,21 @@ def render(mesh, eye, target, size=(1400, 1000), fov=26.0, up=(0, 0, 1),
 
     `face_colors` is an (F, 3) array of RGB values from 0 to 1, one colour per face. `headlight`
     overrides HEADLIGHT for this call. `ao` is accepted for compatibility and not used.
+
+    `backend` is "cpu", "gpu" or "auto" (the default, or the BASE3D_RENDER environment variable when
+    it is set). "auto" draws on the GPU when moderngl is installed (`pip install '3d-base[gpu]'`) and
+    an OpenGL context opens, and on the CPU otherwise. Both paths project, light and colour the
+    corners the same way, on the CPU, and differ only in who fills the triangles, so they give the
+    same picture: the GPU picture differs from the CPU one by at most one level in a few pixels
+    (float32 against float64) and in single pixels along edges that pass exactly through a pixel
+    centre. "cpu" gives exactly the pixels of earlier releases. "gpu" raises when no context opens.
+
+    Timing on an M1 Max, a mesh of 499,680 faces at 900 by 1000 pixels, with the corner normals
+    already cached on the mesh (they take 0.5 s once): 17.7 s on the CPU, 0.19 s on the GPU, and
+    0.32 s for the first GPU picture of a process, which opens the context.
     """
     W, H = size
+    which = _choose_backend(backend)
     V = np.asarray(mesh.vertices, float)
     F = np.asarray(mesh.faces)
     M = look_at(eye, target, up)
@@ -186,9 +201,6 @@ def render(mesh, eye, target, size=(1400, 1000), fov=26.0, up=(0, 0, 1),
         col = np.asarray(face_colors, float)
     col = np.clip(col, 0, 1)                    # colour is flat per face, only the light varies
 
-    img = np.tile(np.asarray(bg, float), (H, W, 1))
-    depth = np.full((H, W), np.inf)
-
     tri = P[F]
     a, b, c = tri[:, 0], tri[:, 1], tri[:, 2]
     area2 = (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (c[:, 0] - a[:, 0]) * (b[:, 1] - a[:, 1])
@@ -196,6 +208,21 @@ def render(mesh, eye, target, size=(1400, 1000), fov=26.0, up=(0, 0, 1),
     tri, col, area2, shade = tri[keep], col[keep], area2[keep], shade[keep]
 
     order = np.argsort(-tri[:, :, 2].min(axis=1))       # far to near
+    if which != "cpu":
+        try:
+            got = _fill_gpu(tri[order], col[order], shade[order], area2[order] > 0, W, H, bg)
+        except Exception as e:  # noqa: BLE001
+            if which == "gpu":
+                raise
+            _gpu_failed(f"the GPU render failed ({type(e).__name__}: {e})")
+            got = None
+        if got is not None:
+            return got
+        if which == "gpu":
+            raise RuntimeError(f"a {W} by {H} picture is larger than the GPU draws in one piece")
+
+    img = np.tile(np.asarray(bg, float), (H, W, 1))
+    depth = np.full((H, W), np.inf)
     for i in order:
         t, cc, sh = tri[i], col[i], shade[i]
         x0 = max(int(np.floor(t[:, 0].min())), 0)
@@ -223,6 +250,162 @@ def render(mesh, eye, target, size=(1400, 1000), fov=26.0, up=(0, 0, 1),
         ss = sh[0] + w1 * (sh[1] - sh[0]) + w0 * (sh[2] - sh[0])
         img[y0:y1, x0:x1][hit] = np.clip(cc[None, :] * ss[hit][:, None], 0, 1)
     return (np.clip(img, 0, 1) * 255).astype(np.uint8)
+
+
+# The GPU path.
+#
+# The CPU path above projects every vertex to pixels, lights each corner and colours each face, and
+# then fills the triangles one at a time in Python. Filling is where nearly all of its time goes, so
+# only filling moves to the GPU: the same projected corners (x and y in pixels, depth along the view),
+# the same per-corner light and the same per-face colour are uploaded with each corner its own vertex,
+# and OpenGL fills them with a depth test. The positions are already in pixels, so nothing is
+# perspective-divided on the GPU and the light and depth are interpolated across each triangle in
+# screen space, as the CPU path does. There is no antialiasing on either path. Faces are drawn in the
+# same far-to-near order.
+# The colour is written as float32 and turned into 8 bits on the CPU, with the same rounding.
+
+# Where a face folds away behind its neighbour (the bottom of a box seen from above, the far side of
+# a box along its outline), the two share an edge, and a pixel centre on that edge is a tie in
+# depth. The CPU path works in float64 at the exact pixel centre and finds the visible face a hair
+# nearer. The GPU snaps corners to a sub-pixel grid first, so the two depths come out equal and the
+# hidden face can win single pixels or a whole row of them. So a face turned away from the camera
+# (by its winding, seen on screen) is pushed back by this much of the depth range, a few steps of a
+# 24-bit depth buffer, which only decides ties: a back face that is really in front, such as the
+# inside of a part seen through a cut, is nearer by far more than this.
+_BACK_BIAS = 2e-6
+
+_GL = {"pid": None, "ctx": None, "prog": None, "fbo": None, "size": None, "failed": None}
+_GL_LOCK = threading.Lock()
+
+_VERT = """
+#version 330
+in vec3 in_pos;
+in float in_shade;
+in vec3 in_col;
+out float v_shade;
+flat out vec3 v_col;
+void main() {
+    gl_Position = vec4(in_pos, 1.0);
+    v_shade = in_shade;
+    v_col = in_col;
+}
+"""
+
+_FRAG = """
+#version 330
+in float v_shade;
+flat in vec3 v_col;
+out vec4 f_color;
+void main() {
+    f_color = vec4(clamp(v_col * v_shade, 0.0, 1.0), 1.0);
+}
+"""
+
+
+def _choose_backend(backend):
+    """"cpu", "gpu" or "auto", from the argument, else BASE3D_RENDER, else "auto"."""
+    b = backend if backend is not None else os.environ.get("BASE3D_RENDER", "") or "auto"
+    b = str(b).strip().lower()
+    if b not in ("auto", "cpu", "gpu"):
+        raise ValueError(f"the render backend is cpu, gpu or auto, not {b!r}")
+    if b == "gpu" and not gpu_available():
+        raise RuntimeError(f"a GPU render was asked for and no OpenGL context opens: {_GL['failed']}")
+    return b
+
+
+def _gpu_failed(why):
+    """Remember that the GPU is not usable in this process, and say so once."""
+    if _GL["failed"] is None:
+        print(f"3d-base: {why}, rendering on the CPU")
+    _GL["failed"] = why
+    _GL["ctx"] = None
+
+
+def _gl():
+    """The process's OpenGL context and shader program, opened on first use. None when it cannot open."""
+    pid = os.getpid()
+    if _GL["pid"] != pid:                       # a forked child cannot use its parent's context
+        _GL.update(pid=pid, ctx=None, prog=None, fbo=None, size=None, failed=None)
+    if _GL["ctx"] is not None:
+        return _GL["ctx"]
+    if _GL["failed"] is not None:
+        return None
+    try:
+        import moderngl
+    except ImportError:
+        _GL["failed"] = "moderngl is not installed (pip install '3d-base[gpu]')"
+        return None
+    try:
+        ctx = moderngl.create_standalone_context()
+        prog = ctx.program(vertex_shader=_VERT, fragment_shader=_FRAG)
+    except Exception as e:  # noqa: BLE001
+        _GL["failed"] = f"no OpenGL context ({type(e).__name__}: {e})"
+        return None
+    _GL.update(ctx=ctx, prog=prog)
+    return ctx
+
+
+def gpu_available():
+    """Whether `render` can draw on the GPU in this process: moderngl is installed and a context opens."""
+    with _GL_LOCK:
+        return _gl() is not None
+
+
+def _fill_gpu(tri, col, shade, back, W, H, bg):
+    """Fill the projected triangles (far to near) on the GPU. None when the GPU cannot take this picture.
+
+    `back` marks the faces wound clockwise on screen, which face away from the camera.
+    """
+    with _GL_LOCK:
+        ctx = _gl()
+        if ctx is None:
+            return None
+        limit = int(ctx.info.get("GL_MAX_VIEWPORT_DIMS", (0, 0))[0] or 0)
+        limit = min(limit, int(ctx.info.get("GL_MAX_TEXTURE_SIZE", 0) or 0))
+        if W > limit or H > limit:
+            return None                         # larger than the GPU can draw in one piece
+        out = np.empty((H, W, 3), np.float64)
+        out[:] = np.asarray(bg, float)
+        if len(tri):
+            z = tri[:, :, 2]
+            z0, z1 = float(z.min()), float(z.max())
+            span = max(z1 - z0, 1e-12)
+            v = np.empty((len(tri), 3, 7), np.float32)
+            v[:, :, 0] = tri[:, :, 0] * (2.0 / W) - 1.0
+            v[:, :, 1] = 1.0 - tri[:, :, 1] * (2.0 / H)
+            v[:, :, 2] = (z - z0) / span * 1.8 - 0.9      # inside the depth range, never clipped
+            v[back, :, 2] += _BACK_BIAS
+            v[:, :, 3] = shade
+            v[:, :, 4:7] = col[:, None, :]
+            with ctx:
+                if _GL["size"] != (W, H):
+                    for old in _GL["fbo"] or ():
+                        old.release()
+                    colour = ctx.texture((W, H), 4, dtype="f4")
+                    depth = ctx.depth_renderbuffer((W, H))
+                    fb = ctx.framebuffer(color_attachments=[colour], depth_attachment=depth)
+                    _GL["fbo"] = (fb, colour, depth)
+                    _GL["size"] = (W, H)
+                fbo = _GL["fbo"][0]
+                vbo = ctx.buffer(v.tobytes())
+                try:
+                    vao = ctx.vertex_array(_GL["prog"], [(vbo, "3f 1f 3f", "in_pos", "in_shade", "in_col")])
+                    try:
+                        fbo.use()
+                        ctx.viewport = (0, 0, W, H)
+                        ctx.enable_only(ctx.DEPTH_TEST)
+                        ctx.depth_func = "<="          # an exact tie goes to the face drawn later, the nearer
+                        fbo.clear(0.0, 0.0, 0.0, 0.0, depth=1.0)
+                        vao.render(ctx.TRIANGLES)
+                        raw = fbo.read(components=4, dtype="f4")
+                    finally:
+                        vao.release()
+                finally:
+                    vbo.release()
+            got = np.frombuffer(raw, np.float32).reshape(H, W, 4)[::-1]
+            hit = got[:, :, 3] > 0.5
+            out[hit] = got[hit][:, :3]
+    return (np.clip(out, 0, 1) * 255).astype(np.uint8)
 
 
 def frame_on(mesh, azim, elev, pad=1.22):

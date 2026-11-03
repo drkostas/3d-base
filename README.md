@@ -2,7 +2,7 @@
 
 # 3d-base
 
-3d-base draws pictures of 3D meshes from Python with no display, no OpenGL and no browser. It needs numpy, trimesh and scipy. I use it to check models for 3D printing from a script, and to give an AI assistant pictures it can judge a design from.
+3d-base draws pictures of 3D meshes from Python with no display, no OpenGL and no browser. It needs numpy, trimesh and scipy. When moderngl is installed and an OpenGL context opens, it fills the triangles on the GPU instead, with the same picture. I use it to check models for 3D printing from a script, and to give an AI assistant pictures it can judge a design from.
 
 It also loads exported STL files and reports what is really wrong with them, after removing the zero-area triangles that CAD exporters write.
 
@@ -77,7 +77,9 @@ I wrote this package so an assistant could judge models from pictures, and the s
 
 ## Speed
 
-It is plain numpy with a loop over triangles. A part with 225,721 faces renders at 700 by 500 in 6 to 9 seconds on an M1 Max, and a part with 40,960 faces in about 1.5 seconds. For an interactive viewer use something else. For pictures in a script, a test or a report it is fast enough.
+On the CPU it is plain numpy with a loop over triangles. A part with 225,721 faces renders at 700 by 500 in 6 to 9 seconds on an M1 Max, and a part with 40,960 faces in about 1.5 seconds.
+
+With `pip install '3d-base[gpu]'` the triangles are filled on the GPU through moderngl whenever an OpenGL context opens, with the same picture. A mesh of 499,680 faces at 900 by 1000 takes 0.19 seconds there against 17.7 seconds on the CPU. Without a context (a CI runner, for one) it draws on the CPU as before. `BASE3D_RENDER=cpu` or `gpu` forces one path, and `cpu` gives exactly the pixels of earlier releases.
 
 ## Development
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- `render` can fill the triangles on the GPU. Install `3d-base[gpu]` (moderngl), and `render`, `sheet` and `sections` draw on the GPU whenever an OpenGL context opens, and on the CPU as before when moderngl is missing or no context opens (a CI runner with no GPU, for one). The projection, the crease-aware corner normals, the light and the colours are still worked out on the CPU, so the two paths give the same picture. Over the tests (a sphere, a box with sharp edges and two coloured parts passing through each other, from four views each) the mean difference is at most 0.002 levels of 255, a pixel off by more than one level is rare (a few along an outline that passes exactly through a pixel centre), and the outlines overlap with an IoU of at least 0.9999.
+- `BASE3D_RENDER=cpu|gpu|auto` (default `auto`) or `render(..., backend=...)` chooses the path. `cpu` gives exactly the pixels of earlier releases, and `gpu` raises when no context opens. `base3d.show.gpu_available()` says whether the GPU can be used. The context is opened once per process.
+- On an M1 Max, a mesh of 499,680 faces at 900 by 1000 pixels renders in 17.7 s on the CPU and in 0.19 s on the GPU (0.32 s for the first picture of a process, which opens the context), with the corner normals already cached on the mesh (0.5 s once). The two pictures of that mesh differ by at most one level of 255 in any pixel.
+- `base3d.__version__` reads 0.6.0.
+
 ## 0.5.0
 
 - `base3d.Nozzle(diameter, layer)` holds the nozzle a part is printed with and gives its smallest sizes as counts of lines and layers: `wall` (two lines), `plate` (two layers), `lines(n)`, `layers(n)` and `line_width` (a slicer's default line, 1.05 times the diameter). `thickness.print_thin_spots` takes `nozzle=` for both bars, `LINE_MM` and `LAYER_MM` are the default nozzle's, and `3d-base thickness --printed --nozzle D --layer H` checks for another nozzle.
