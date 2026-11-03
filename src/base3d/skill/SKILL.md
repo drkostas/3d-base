@@ -41,6 +41,16 @@ save_png(img, "part.png")
 degrees) and `naive_normals`. `sheet(mesh, views=..., size=..., cols=...)` accepts view names from
 `VIEWS` or `(azim, elev)` tuples. `tile(images, cols=...)` lays out any images of equal size.
 
+With `pip install '3d-base[gpu]'` (moderngl), `render`, `sheet` and `sections` fill the triangles on
+the GPU when an OpenGL context opens, and on the CPU otherwise. The picture is the same: the
+projection, light and colours are still worked out on the CPU, and the GPU only fills the
+triangles. `BASE3D_RENDER=cpu|gpu|auto` (or `render(..., backend=...)`) forces one path, and
+`base3d.show.gpu_available()` says whether the GPU can be used. Use `cpu` when a picture has to
+match one saved by an earlier release pixel for pixel. A GPU picture can differ from the CPU one by
+one level of 255 in a few pixels, and by a whole pixel where an outline passes exactly through a
+pixel centre. A large mesh is where the GPU pays: 499,680 faces at 900 by 1000 took 17.7 s on the CPU and
+0.19 s on the GPU of an M1 Max.
+
 ## Render enough views, including from below and behind
 
 A single three-quarter view hides exactly the things that go wrong. A part sunk into another part
